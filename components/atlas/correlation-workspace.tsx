@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import {
   ASSOCIATION_LENSES,
@@ -37,11 +38,13 @@ function PairwiseOverview({
   left,
   right,
   onPair,
+  onClose,
 }: {
   data: MapData;
   left: AssociationLensId;
   right: AssociationLensId;
   onPair: (left: AssociationLensId, right: AssociationLensId) => void;
+  onClose: () => void;
 }) {
   const overview = useMemo(() => {
     const values = new Map<string, number>();
@@ -59,27 +62,28 @@ function PairwiseOverview({
   }, [data]);
 
   return (
-    <section className="border-b border-border p-4 lg:border-b-0 lg:border-r" aria-labelledby="association-overview-title">
-      <div className="flex items-baseline justify-between">
+    <section id="pairwise-association" className="border-b border-border p-5 lg:border-b-0 lg:border-r" aria-labelledby="association-overview-title">
+      <div className="flex items-center justify-between gap-3">
         <h2 id="association-overview-title" className="font-heading text-lg font-medium">Pairwise association</h2>
-        <span className="font-mono text-[9px] text-muted-foreground">Cramér&apos;s V</span>
+        <button type="button" onClick={onClose} className="grid size-8 shrink-0 place-items-center text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" aria-label="Minimise pairwise association" title="Minimise pairwise association"><PanelLeftClose className="size-4" /></button>
       </div>
-      <div className="mt-5 overflow-hidden pb-2">
-        <div className="grid w-max grid-cols-[58px_repeat(8,29px)] gap-px bg-border p-px">
+      <div className="mt-5 overflow-x-auto pb-2">
+        <div className="grid w-max grid-cols-[76px_repeat(8,36px)] gap-px bg-border p-px">
           <div className="bg-[var(--panel-background)]" />
-          {ASSOCIATION_LENSES.map((lens) => <div key={lens.id} className="flex h-14 items-end justify-center bg-[var(--panel-background)] pb-1"><span className="origin-bottom-left -rotate-55 translate-x-1 whitespace-nowrap font-mono text-[8px] text-muted-foreground" title={lens.label}>{lens.shortLabel}</span></div>)}
+          {ASSOCIATION_LENSES.map((lens) => <div key={lens.id} className="flex h-16 items-end justify-center bg-[var(--panel-background)] pb-1"><span className="origin-bottom-left -rotate-55 translate-x-1 whitespace-nowrap font-mono text-[9px] text-muted-foreground" title={lens.label}>{lens.shortLabel}</span></div>)}
           {ASSOCIATION_LENSES.flatMap((rowLens, rowIndex) => [
-            <div key={`${rowLens.id}-label`} className="flex h-[31px] items-center truncate bg-[var(--panel-background)] px-1.5 font-mono text-[8px] text-muted-foreground" title={rowLens.label}>{rowLens.shortLabel}</div>,
+            <div key={`${rowLens.id}-label`} className="flex h-[38px] items-center truncate bg-[var(--panel-background)] px-2 font-mono text-[9px] text-muted-foreground" title={rowLens.label}>{rowLens.shortLabel}</div>,
             ...ASSOCIATION_LENSES.map((columnLens, columnIndex) => {
               const value = overview.get(`${rowLens.id}:${columnLens.id}`) ?? 0;
               const diagonal = rowIndex === columnIndex;
               const active = (left === rowLens.id && right === columnLens.id) || (left === columnLens.id && right === rowLens.id);
-              return <button key={`${rowLens.id}:${columnLens.id}`} disabled={diagonal} aria-label={diagonal ? rowLens.label : `${rowLens.label} by ${columnLens.label}: ${value.toFixed(2)}`} title={diagonal ? rowLens.label : `${rowLens.label} × ${columnLens.label}: V = ${value.toFixed(3)}`} onClick={() => onPair(rowLens.id, columnLens.id)} className={`flex size-[29px] items-center justify-center font-mono text-[8px] tabular-nums outline-none ring-inset focus-visible:ring-2 focus-visible:ring-ring ${active ? 'ring-2 ring-foreground' : ''}`} style={{ background: diagonal ? '#D7DCE0' : associationColour(value), color: value > 0.34 ? '#FFFFFF' : '#17212A' }}>{diagonal ? '—' : value.toFixed(2).replace(/^0/, '')}</button>;
+              return <button key={`${rowLens.id}:${columnLens.id}`} disabled={diagonal} aria-label={diagonal ? rowLens.label : `${rowLens.label} by ${columnLens.label}: ${value.toFixed(2)}`} title={diagonal ? rowLens.label : `${rowLens.label} × ${columnLens.label}: V = ${value.toFixed(3)}`} onClick={() => onPair(rowLens.id, columnLens.id)} className={`flex size-9 items-center justify-center font-mono text-[9px] tabular-nums outline-none ring-inset focus-visible:ring-2 focus-visible:ring-ring ${active ? 'ring-2 ring-foreground' : ''}`} style={{ background: diagonal ? '#D7DCE0' : associationColour(value), color: value > 0.34 ? '#FFFFFF' : '#17212A' }}>{diagonal ? '—' : value.toFixed(2).replace(/^0/, '')}</button>;
             }),
           ])}
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-2 font-mono text-[8px] text-muted-foreground"><span>0</span><span className="h-1.5 flex-1" style={{ background: 'linear-gradient(90deg,#f1f4f6,#153a5b)' }} /><span>≥ .65</span></div>
+      <div className="mt-3 flex items-center gap-2 font-mono text-[9px] text-muted-foreground"><span>0</span><span className="h-1.5 flex-1" style={{ background: 'linear-gradient(90deg,#f1f4f6,#153a5b)' }} /><span>≥ .65</span></div>
+      <p className="mt-1 text-center font-mono text-[9px] text-muted-foreground">Bias-corrected Cramér&apos;s V</p>
     </section>
   );
 }
@@ -114,6 +118,7 @@ export function CorrelationWorkspace({ data }: { data: MapData }) {
   const [left, setLeft] = useState<AssociationLensId>('bertopic');
   const [right, setRight] = useState<AssociationLensId>('lda');
   const [limit, setLimit] = useState(20);
+  const [overviewOpen, setOverviewOpen] = useState(true);
   const result = useMemo(() => buildAssociation(data, left, right), [data, left, right]);
   const setPair = (nextLeft: AssociationLensId, nextRight: AssociationLensId) => {
     if (nextLeft === nextRight) return;
@@ -124,15 +129,16 @@ export function CorrelationWorkspace({ data }: { data: MapData }) {
   const chooseRight = (next: AssociationLensId) => setPair(next === left ? right : left, next);
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[350px_minmax(0,1fr)] bg-background max-lg:grid-cols-1 max-lg:overflow-auto">
-      <PairwiseOverview data={data} left={left} right={right} onPair={setPair} />
+    <div className={`grid min-h-0 flex-1 grid-cols-1 bg-background max-lg:overflow-auto ${overviewOpen ? 'lg:grid-cols-[440px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
+      {overviewOpen ? <PairwiseOverview data={data} left={left} right={right} onPair={setPair} onClose={() => setOverviewOpen(false)} /> : null}
       <section className="flex min-h-0 min-w-0 flex-col" aria-labelledby="association-detail-title">
         <div className="border-b border-border px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
+            {!overviewOpen ? <button type="button" onClick={() => setOverviewOpen(true)} className="flex h-8 items-center gap-2 border border-input bg-background px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" aria-expanded="false" aria-controls="pairwise-association"><PanelLeftOpen className="size-4" />Pairwise association</button> : null}
             <label className="grid gap-1"><span className="data-kicker">Rows</span><select value={left} onChange={(event) => chooseLeft(event.target.value as AssociationLensId)} className="h-8 min-w-48 border border-input bg-background px-2 text-xs outline-none focus:border-ring">{ASSOCIATION_LENSES.map((lens) => <option key={lens.id} value={lens.id}>{lens.label}</option>)}</select></label>
             <label className="grid gap-1"><span className="data-kicker">Columns</span><select value={right} onChange={(event) => chooseRight(event.target.value as AssociationLensId)} className="h-8 min-w-48 border border-input bg-background px-2 text-xs outline-none focus:border-ring">{ASSOCIATION_LENSES.map((lens) => <option key={lens.id} value={lens.id}>{lens.label}</option>)}</select></label>
             <label className="grid gap-1"><span className="data-kicker">Display</span><select value={limit} onChange={(event) => setLimit(Number(event.target.value))} className="h-8 border border-input bg-background px-2 text-xs outline-none focus:border-ring"><option value={10}>Top 10</option><option value={20}>Top 20</option><option value={30}>Top 30</option></select></label>
-            <div className="ml-auto flex items-baseline gap-4 border-l border-border pl-4 font-mono text-[10px] tabular-nums text-muted-foreground max-xl:ml-0"><span><strong className="text-base font-medium text-foreground">{result.cramersV.toFixed(3)}</strong> V</span><span><strong className="text-base font-medium text-foreground">{result.eligiblePapers.toLocaleString()}</strong> papers</span></div>
+            <div className="ml-auto border-l border-border pl-4 font-mono text-[10px] tabular-nums text-muted-foreground max-xl:ml-0"><span><strong className="text-base font-medium text-foreground">{result.eligiblePapers.toLocaleString()}</strong> papers</span></div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
             <h2 id="association-detail-title" className="font-medium text-foreground">Pearson residuals</h2>
@@ -140,7 +146,6 @@ export function CorrelationWorkspace({ data }: { data: MapData }) {
           </div>
         </div>
         <Heatmap result={result} limit={limit} />
-        <footer className="border-t border-border px-5 py-2 text-[9px] leading-4 text-muted-foreground">V is bias-corrected Cramér&apos;s V. Cells use full-table expected counts; display limits affect visibility only.{result.usesMultiResponse ? ' Keyword memberships are exploded and results are descriptive.' : ''}</footer>
       </section>
     </div>
   );

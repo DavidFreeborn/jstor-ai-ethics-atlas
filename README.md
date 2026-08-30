@@ -2,6 +2,8 @@
 
 An interactive research atlas for exploring the complete AI ethics literature catalogue through semantic, topic, publication, keyword and authorship lenses.
 
+**Live atlas:** [GitHub Pages](https://davidfreeborn.github.io/jstor-ai-ethics-atlas/) · [Sites release](https://jstor-ai-ethics-atlas.dafidius.chatgpt.site)
+
 The public interface has a paper atlas and a correlation-matrix workspace. Every map lens uses one fixed, title-based SPECTER/UMAP geometry for all 7,076 records:
 
 - **Topic models** — 26-topic BERTopic, the fixed 9-topic reduction, and 37-topic LDA.
@@ -36,6 +38,7 @@ npx tsc --noEmit
 npm run test:network
 npm run test:association
 npm run build
+npm run build:pages
 python scripts/validate_release.py
 python scripts/audit_palette.py
 ```

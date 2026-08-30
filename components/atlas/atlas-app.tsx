@@ -16,7 +16,7 @@ export function AtlasApp() {
   const [mapError, setMapError] = useState('');
   useEffect(() => {
     let active = true;
-    fetch('/data/map.json')
+    fetch(new URL('data/map.json', document.baseURI))
       .then((response) => { if (!response.ok) throw new Error(`Map data returned ${response.status}`); return response.json() as Promise<MapData>; })
       .then((payload) => active && setMap(payload))
       .catch((cause: Error) => active && setMapError(cause.message));
