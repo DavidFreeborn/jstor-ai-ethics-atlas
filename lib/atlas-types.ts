@@ -18,25 +18,36 @@ export type PaperPoint = {
   x: number;
   y: number;
   title: string;
+  year: string;
+  type: string;
+  publisher: string;
   journal: string;
-  preview: string;
-  words: number;
-  bertopic: number;
-  bertopic_probability_pre_reduction: number;
-  provenance: AssignmentProvenance;
-  bertopic_reduced: number;
-  alignment: number | null;
-  lda?: {
-    topic: number;
-    dominance: number;
-    memberships: LdaMembership[];
-    topics_above_010: number;
-  };
+  authors: string[];
+  keywords: string[];
+  coauthor_count: number;
+  neighbour_agreement: number | null;
+  preview?: string;
+  bertopic?: number;
+  bertopic_reduced?: number;
+  lda_topic?: number;
 };
 
 export type MapData = {
   release: string;
-  cohort: { label: string; n: number; catalogue_n: number };
+  cohort: {
+    label: string;
+    n: number;
+    catalogue_n: number;
+    coverage: {
+      bertopic: number;
+      lda: number;
+      neighbour_agreement: number;
+      publisher: number;
+      journal: number;
+      keywords: number;
+      authors: number;
+    };
+  };
   geometry: {
     embedding: string;
     projection: string;
@@ -50,17 +61,34 @@ export type MapData = {
     bertopic_reduced: TopicSummary[];
     lda: TopicSummary[];
   };
-  topic_centres: Record<string, { x: number; y: number }>;
+  facets: {
+    publishers: FacetValue[];
+    journals: FacetValue[];
+    keywords: FacetValue[];
+    maximum_selection: number;
+  };
+  agreement: {
+    eligible: number;
+    minimum: number;
+    median: number;
+    maximum: number;
+    definition: string;
+  };
   points: PaperPoint[];
 };
 
+export type FacetValue = { value: string; count: number };
+
 export type PaperLens =
+  | 'catalogue'
   | 'bertopic'
   | 'bertopic_reduced'
-  | 'provenance'
   | 'lda'
-  | 'lda_dominance'
-  | 'alignment';
+  | 'agreement'
+  | 'publisher'
+  | 'journal'
+  | 'keywords'
+  | 'coauthorship';
 
 export type ContingencyCell = {
   bertopic?: number;

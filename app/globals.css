@@ -165,6 +165,12 @@
   .alignment-ramp {
     background: linear-gradient(90deg, #64748b, #ff5fd2);
   }
+  .agreement-ramp-v3 {
+    background: linear-gradient(90deg, #3b1b78, #3156b5, #00a9b7, #55d56b, #ffe34d);
+  }
+  .coauthor-ramp {
+    background: linear-gradient(90deg, #274060, #00a9b7, #ffe34d);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

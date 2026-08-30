@@ -64,6 +64,10 @@ EMBEDDINGS = {
     "SPECTER2": SOURCE / "specter2.npy",
     "S-SciBERT": SOURCE / "s_scibert.npy",
 }
+CATALOGUE_EMBEDDING = SOURCE / "catalogue_title_specter.npy"
+CATALOGUE_METADATA = SOURCE / "catalogue_metadata.jsonl"
+CATALOGUE_PROJECTION = SOURCE / "catalogue_title_umap.npy"
+CATALOGUE_PROJECTION_AUDIT = SOURCE / "catalogue_title_umap_audit.json"
 
 BER_PALETTE = HIGH_CONTRAST_PALETTE[:26]
 LDA_PALETTE = HIGH_CONTRAST_PALETTE
@@ -303,6 +307,45 @@ def projection_audit(embeddings: dict[str, np.ndarray]) -> tuple[str, dict, np.n
     return selected, metrics, base
 
 
+def catalogue_projection_audit(values: np.ndarray) -> tuple[np.ndarray, dict]:
+    """Fit and audit the common title-based catalogue geometry."""
+    projection = fit_projection(values, PROJECTION["random_state"])
+    quality = {
+        "shape": list(values.shape),
+        "finite": bool(np.isfinite(values).all()),
+        "mean_norm": round(float(np.linalg.norm(values, axis=1).mean()), 6),
+        "trustworthiness_15": round(
+            float(trustworthiness(values, projection, n_neighbors=15, metric="cosine")), 6
+        ),
+        "trustworthiness_30": round(
+            float(trustworthiness(values, projection, n_neighbors=30, metric="cosine")), 6
+        ),
+        "neighbour_recall_15": round(neighbour_recall(values, projection, 15), 6),
+        "neighbour_recall_30": round(neighbour_recall(values, projection, 30), 6),
+        "distance_spearman": round(distance_rank_correlation(values, projection), 6),
+    }
+    alternate = fit_projection(values, 43)
+    centred = projection - projection.mean(axis=0)
+    centred_alternate = alternate - alternate.mean(axis=0)
+    rotation, _ = orthogonal_procrustes(centred_alternate, centred)
+    aligned = centred_alternate @ rotation
+    aligned *= np.linalg.norm(centred) / max(np.linalg.norm(aligned), 1e-12)
+    displacement = np.linalg.norm(aligned - centred, axis=1) / max(
+        np.ptp(centred, axis=0).max(), 1e-12
+    )
+    quality["seed_stability"] = [
+        {
+            "seed": 43,
+            "median_normalized_displacement": round(float(np.median(displacement)), 6),
+            "p90_normalized_displacement": round(float(np.quantile(displacement, 0.9)), 6),
+            "neighbour_overlap_15": round(
+                low_projection_neighbour_overlap(projection, aligned, 15), 6
+            ),
+        }
+    ]
+    return projection, quality
+
+
 def bertopic_topics() -> tuple[dict[int, dict], dict[int, str]]:
     info = pd.read_csv(SOURCE / "bertopic_topic_info.csv")
     topics: dict[int, dict] = {}
@@ -456,20 +499,74 @@ def cross_method_alignment(frame: pd.DataFrame) -> tuple[dict[str, float], dict]
     return alignment, metrics
 
 
-def build_map(selected_embedding: str, projection: np.ndarray, projection_metrics: dict) -> tuple[dict, dict]:
-    index = pd.read_csv(SOURCE / "doc_index.csv").sort_values("row_index")
+def load_catalogue_metadata() -> list[dict]:
+    with CATALOGUE_METADATA.open("r", encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def neighbourhood_agreement(
+    index: pd.DataFrame,
+    bert_lookup: dict[str, dict],
+    lda_lookup: dict[str, dict],
+) -> dict[str, float | None]:
+    """Jaccard overlap of same-topic neighbours in local abstract-SPECTER neighbourhoods."""
+    eligible_positions = [
+        position
+        for position, doc_id in enumerate(index["doc_id"])
+        if int(bert_lookup[doc_id]["topic"]) >= 0 and doc_id in lda_lookup
+    ]
+    abstract_embeddings = np.load(SOURCE / "specter.npy")[eligible_positions]
+    ids = [clean(index.iloc[position]["doc_id"]) for position in eligible_positions]
+    neighbours = neighbour_indices(abstract_embeddings, 30, "cosine")
+    result: dict[str, float | None] = {}
+    for row_index, doc_id in enumerate(ids):
+        focal_ber = int(bert_lookup[doc_id]["topic"])
+        focal_lda = int(lda_lookup[doc_id]["topic"])
+        ber_set = {
+            int(neighbour)
+            for neighbour in neighbours[row_index]
+            if int(bert_lookup[ids[int(neighbour)]]["topic"]) == focal_ber
+        }
+        lda_set = {
+            int(neighbour)
+            for neighbour in neighbours[row_index]
+            if int(lda_lookup[ids[int(neighbour)]]["topic"]) == focal_lda
+        }
+        union = ber_set | lda_set
+        result[doc_id] = round(len(ber_set & lda_set) / len(union), 4) if union else None
+    return result
+
+
+def facet_counts(points: list[dict], field: str, many: bool = False) -> list[dict]:
+    counts: Counter[str] = Counter()
+    for point in points:
+        values = point.get(field, []) if many else [point.get(field, "")]
+        counts.update(value for value in values if value)
+    return [
+        {"value": value, "count": int(count)}
+        for value, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))
+    ]
+
+
+def build_map(projection: np.ndarray, projection_quality: dict) -> tuple[dict, dict]:
+    catalogue = load_catalogue_metadata()
+    index = pd.read_csv(SOURCE / "doc_index.csv").sort_values("row_index").reset_index(drop=True)
     bert = pd.read_csv(SOURCE / "bertopic_assignments.csv")
-    if len(index) != len(projection):
-        raise AssertionError(f"Index rows {len(index)} != projection rows {len(projection)}")
+    if len(catalogue) != len(projection) or len(catalogue) != 7076:
+        raise AssertionError(f"Catalogue rows {len(catalogue)} != projection rows {len(projection)}")
+    if len({item["id"] for item in catalogue}) != len(catalogue):
+        raise AssertionError("Catalogue document IDs must be unique")
     if index["doc_id"].duplicated().any() or bert["doc_id"].duplicated().any():
-        raise AssertionError("Canonical document IDs must be unique")
+        raise AssertionError("Abstract model document IDs must be unique")
     if set(index["doc_id"]) != set(bert["doc_id"]):
-        raise AssertionError("BERTopic assignments do not cover the embedding index exactly")
+        raise AssertionError("BERTopic assignments do not cover the abstract embedding index exactly")
 
     bert_topics, bert_labels = bertopic_topics()
     ladder_lookup, ladder_topics = ladder_data()
     lda_lookup, lda_topics = lda_data()
     bert_lookup = bert.set_index("doc_id").to_dict("index")
+    abstract_index = index.set_index("doc_id").to_dict("index")
+    agreement = neighbourhood_agreement(index, bert_lookup, lda_lookup)
 
     joined = pd.DataFrame(
         {
@@ -478,71 +575,80 @@ def build_map(selected_embedding: str, projection: np.ndarray, projection_metric
             "lda": [lda_lookup.get(doc, {}).get("topic", np.nan) for doc in index["doc_id"]],
         }
     )
-    alignment, comparison = cross_method_alignment(joined)
+    _, comparison = cross_method_alignment(joined)
+
+    author_documents: defaultdict[str, set[str]] = defaultdict(set)
+    for record in catalogue:
+        for author in record["authors"]:
+            author_documents[author].add(record["id"])
 
     points = []
     provenance_counts: Counter[str] = Counter()
-    missing_lda = []
-    for position, (_, row) in enumerate(index.iterrows()):
-        doc_id = clean(row["doc_id"])
-        b = bert_lookup[doc_id]
-        b_topic = int(b["topic"])
-        probability = float(b["probability_pre_outlier_reduction"])
-        provenance = assignment_provenance(b_topic, probability)
-        provenance_counts[provenance] += 1
+    for position, record in enumerate(catalogue):
+        doc_id = clean(record["id"])
+        b = bert_lookup.get(doc_id)
         lda = lda_lookup.get(doc_id)
-        if lda is None:
-            missing_lda.append(doc_id)
-        title = lda["title"] if lda and lda["title"] else f"JSTOR record {doc_id.rsplit('/', 1)[-1]}"
-        journal = lda["journal"] if lda else ""
         point = {
-            "i": int(row["row_index"]),
+            "i": position,
             "id": doc_id,
             "x": round(float(projection[position, 0]), 5),
             "y": round(float(projection[position, 1]), 5),
-            "title": title,
-            "journal": journal,
-            "preview": clean(row["preview"]),
-            "words": int(row["n_words"]),
-            "bertopic": b_topic,
-            "bertopic_probability_pre_reduction": round(probability, 4),
-            "provenance": provenance,
-            "bertopic_reduced": int(ladder_lookup.get(doc_id, -1)),
-            "alignment": alignment.get(doc_id),
+            "title": clean(record["title"]),
+            "year": clean(record.get("year", "")),
+            "type": clean(record.get("type", "")),
+            "publisher": clean(record.get("publisher", "")),
+            "journal": clean(lda.get("journal", "")) if lda else "",
+            "authors": record.get("authors", []),
+            "keywords": record.get("keywords", []),
+            "coauthor_count": len(
+                set().union(*(author_documents[name] for name in record.get("authors", [])))
+                - {doc_id}
+            ) if record.get("authors") else 0,
+            "neighbour_agreement": agreement.get(doc_id),
         }
+        if b:
+            b_topic = int(b["topic"])
+            provenance_counts[assignment_provenance(
+                b_topic, float(b["probability_pre_outlier_reduction"])
+            )] += 1
+            point["bertopic"] = b_topic
+            point["bertopic_reduced"] = int(ladder_lookup.get(doc_id, -1))
+            source_row = abstract_index.get(doc_id)
+            if source_row:
+                point["preview"] = clean(source_row.get("preview", ""))
         if lda:
-            point["lda"] = {
-                "topic": lda["topic"],
-                "dominance": lda["dominance"],
-                "memberships": lda["memberships"],
-                "topics_above_010": lda["topics_above_010"],
-            }
+            point["lda_topic"] = int(lda["topic"])
         points.append(point)
 
-    topic_centres = {}
-    for topic in bert_topics:
-        members = [p for p in points if p["bertopic"] == topic]
-        if members:
-            topic_centres[str(topic)] = {
-                "x": round(float(np.median([p["x"] for p in members])), 5),
-                "y": round(float(np.median([p["y"] for p in members])), 5),
-            }
-
+    agreement_values = [value for value in agreement.values() if value is not None]
     payload = {
         "release": "2026-08-30",
-        "cohort": {"label": "Abstract model", "n": len(points), "catalogue_n": 7076},
+        "cohort": {
+            "label": "Complete catalogue",
+            "n": len(points),
+            "catalogue_n": len(points),
+            "coverage": {
+                "bertopic": sum("bertopic" in point for point in points),
+                "lda": sum("lda_topic" in point for point in points),
+                "neighbour_agreement": len(agreement_values),
+                "publisher": sum(bool(point["publisher"]) for point in points),
+                "journal": sum(bool(point["journal"]) for point in points),
+                "keywords": sum(bool(point["keywords"]) for point in points),
+                "authors": sum(bool(point["authors"]) for point in points),
+            },
+        },
         "geometry": {
-            "embedding": selected_embedding,
+            "embedding": "SPECTER title embeddings",
             "projection": "UMAP",
             "parameters": PROJECTION,
-            "quality": projection_metrics[selected_embedding],
+            "quality": projection_quality,
             "bounds": {
                 "x": [round(float(projection[:, 0].min()), 5), round(float(projection[:, 0].max()), 5)],
                 "y": [round(float(projection[:, 1].min()), 5), round(float(projection[:, 1].max()), 5)],
             },
             "interpretation": (
-                "Local proximity approximates semantic neighbourhoods in the source embedding. "
-                "Axis direction, orientation, area and empty space have no intrinsic meaning."
+                "Local proximity approximates title-semantic neighbourhoods. Axis direction, "
+                "orientation, area and empty space have no intrinsic meaning."
             ),
         },
         "topics": {
@@ -550,16 +656,30 @@ def build_map(selected_embedding: str, projection: np.ndarray, projection_metric
             "bertopic_reduced": ladder_topics,
             "lda": lda_topics,
         },
-        "topic_centres": topic_centres,
+        "facets": {
+            "publishers": facet_counts(points, "publisher"),
+            "journals": facet_counts(points, "journal"),
+            "keywords": facet_counts(points, "keywords", many=True),
+            "maximum_selection": 30,
+        },
+        "agreement": {
+            "eligible": len(agreement_values),
+            "minimum": round(min(agreement_values), 4),
+            "median": round(float(np.median(agreement_values)), 4),
+            "maximum": round(max(agreement_values), 4),
+            "definition": (
+                "Jaccard overlap between BERTopic- and LDA-same-topic sets among each paper's "
+                "30 nearest neighbours in the abstract SPECTER embedding."
+            ),
+        },
         "points": points,
     }
     audit = {
-        "embedding_rows": len(index),
-        "unique_ids": int(index["doc_id"].nunique()),
+        "embedding_rows": len(catalogue),
+        "unique_ids": len({item["id"] for item in catalogue}),
         "bertopic_rows": len(bert),
-        "lda_joined": len(index) - len(missing_lda),
-        "lda_missing": len(missing_lda),
-        "lda_missing_ids": missing_lda,
+        "lda_joined": sum("lda_topic" in point for point in points),
+        "agreement_eligible": len(agreement_values),
         "bertopic_outliers": int((bert["topic"] == -1).sum()),
         "provenance_counts": dict(provenance_counts),
         "cross_method": comparison,
@@ -783,12 +903,19 @@ def source_manifest() -> list[dict]:
 
 
 def main() -> None:
-    embeddings = {name: np.load(path) for name, path in EMBEDDINGS.items()}
-    row_counts = {values.shape[0] for values in embeddings.values()}
-    if row_counts != {2057}:
-        raise AssertionError(f"Unexpected embedding row counts: {row_counts}")
-    selected, projection_metrics, projection = projection_audit(embeddings)
-    map_payload, map_audit = build_map(selected, projection, projection_metrics)
+    catalogue_embeddings = np.load(CATALOGUE_EMBEDDING)
+    if catalogue_embeddings.shape != (7076, 768):
+        raise AssertionError(f"Unexpected catalogue embedding shape: {catalogue_embeddings.shape}")
+    if CATALOGUE_PROJECTION.exists() and CATALOGUE_PROJECTION_AUDIT.exists():
+        projection = np.load(CATALOGUE_PROJECTION)
+        projection_quality = json.loads(CATALOGUE_PROJECTION_AUDIT.read_text(encoding="utf-8"))
+    else:
+        projection, projection_quality = catalogue_projection_audit(catalogue_embeddings)
+        np.save(CATALOGUE_PROJECTION, projection)
+        write_json(CATALOGUE_PROJECTION_AUDIT, projection_quality)
+    if projection.shape != (7076, 2) or not np.isfinite(projection).all():
+        raise AssertionError(f"Unexpected catalogue projection shape or values: {projection.shape}")
+    map_payload, map_audit = build_map(projection, projection_quality)
     methods_payload = build_methods(map_audit)
     network_payload, network_audit = build_network()
     publishing_payload = build_publishing(network_payload["meta"])
@@ -824,24 +951,25 @@ def main() -> None:
             "paired_eligible": 423,
             "paired_fulltext_assigned": 389,
         },
-        "projection_candidates": projection_metrics,
-        "selected_geometry": selected,
+        "projection_candidates": {"SPECTER title embeddings": projection_quality},
+        "selected_geometry": "SPECTER title embeddings",
         "map_audit": {k: v for k, v in map_audit.items() if k not in {"cross_method", "bertopic_labels"}},
         "network_audit": network_audit,
         "sources": source_manifest(),
         "derived": derived,
         "limitations": [
-            "The semantic terrain covers model-ready abstracts, not the complete catalogue.",
-            "LDA secondary memberships are exported only at or above 0.10.",
+            "The common semantic terrain uses titles because titles are the only semantic text field available for all 7,076 records.",
+            "BERTopic covers 2,057 records; LDA covers 2,052; 2,015 of those LDA rows provide non-empty journal metadata.",
+            "Controlled keywords are exact normalized intersections with the frozen 534-keyword network vocabulary.",
             "Per-topic LDA stability is available for the most and least stable published topics; the complete stability table was not distributed with this release.",
-            "Publisher profiles are aggregate community summaries; a canonical paper-level publisher mapping was not available.",
+            "Creator strings and publisher names are retained as supplied and are not authority-normalized.",
             "The paired abstract/full-text comparison changes both document source and selected model configuration.",
         ],
     }
     write_json(PUBLIC / "manifest.json", manifest)
     print(json.dumps({
-        "selected_geometry": selected,
-        "projection_metrics": projection_metrics,
+        "selected_geometry": "SPECTER title embeddings",
+        "projection_metrics": projection_quality,
         "map_audit": manifest["map_audit"],
         "network_audit": network_audit,
         "derived": derived,

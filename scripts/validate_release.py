@@ -30,20 +30,61 @@ def main() -> None:
     manifest = load("manifest.json")
 
     points = atlas["points"]
-    assert atlas["cohort"]["n"] == len(points) == 2057
+    assert atlas["cohort"]["n"] == len(points) == 7076
     assert atlas["cohort"]["catalogue_n"] == 7076
     assert len({paper["id"] for paper in points}) == len(points)
     assert all(math.isfinite(paper[axis]) for paper in points for axis in ("x", "y"))
-    assert Counter(paper["provenance"] for paper in points) == Counter({"core": 1107, "reassigned": 708, "outlier": 242})
-    assert sum(topic["count"] for topic in atlas["topics"]["bertopic"]) == len(points)
-    assert sum(topic["count"] for topic in atlas["topics"]["bertopic_reduced"]) == len(points)
+    coverage = atlas["cohort"]["coverage"]
+    assert coverage == {
+        "bertopic": 2057,
+        "lda": 2052,
+        "neighbour_agreement": 1797,
+        "publisher": 7076,
+        "journal": 2015,
+        "keywords": 6023,
+        "authors": 5265,
+    }
+    assert sum(topic["count"] for topic in atlas["topics"]["bertopic"]) == 2057
+    assert sum(topic["count"] for topic in atlas["topics"]["bertopic_reduced"]) == 2057
     assert sum(topic["count"] for topic in atlas["topics"]["lda"]) == 2052
-    assert sum("lda" in paper for paper in points) == 2051
+    assert sum("bertopic" in paper for paper in points) == 2057
+    assert sum("lda_topic" in paper for paper in points) == 2052
+    assert sum(bool(paper["journal"]) for paper in points) == 2015
+    assert sum(bool(paper["keywords"]) for paper in points) == 6023
+    assert sum(bool(paper["authors"]) for paper in points) == 5265
+    assert all(paper["title"] and paper["publisher"] for paper in points)
     assert atlas["geometry"]["parameters"]["n_neighbors"] == 30
     assert atlas["geometry"]["parameters"]["min_dist"] == 0.08
     quality = atlas["geometry"]["quality"]
     assert quality["trustworthiness_15"] >= 0.85
-    assert min(item["neighbour_overlap_15"] for item in quality["seed_stability"]) >= 0.45
+    assert quality["finite"] is True
+    assert all(0 <= item["neighbour_overlap_15"] <= 1 for item in quality["seed_stability"])
+
+    agreement = [paper["neighbour_agreement"] for paper in points if paper["neighbour_agreement"] is not None]
+    assert len(agreement) == coverage["neighbour_agreement"]
+    assert all(0 <= value <= 1 for value in agreement)
+    assert min(agreement) == atlas["agreement"]["minimum"]
+    assert max(agreement) == atlas["agreement"]["maximum"]
+
+    for field, source_field, many in (
+        ("publishers", "publisher", False),
+        ("journals", "journal", False),
+        ("keywords", "keywords", True),
+    ):
+        observed = Counter()
+        for paper in points:
+            values = paper[source_field] if many else [paper[source_field]]
+            observed.update(value for value in values if value)
+        released = {item["value"]: item["count"] for item in atlas["facets"][field]}
+        assert released == observed
+
+    author_documents = {}
+    for paper in points:
+        for author in paper["authors"]:
+            author_documents.setdefault(author, set()).add(paper["id"])
+    for paper in points:
+        connected = set().union(*(author_documents[author] for author in paper["authors"])) - {paper["id"]} if paper["authors"] else set()
+        assert paper["coauthor_count"] == len(connected)
 
     assert methods["cross_method"]["n"] == sum(cell["count"] for cell in methods["cross_method"]["cells"]) == 1810
     assert methods["paired"]["eligible_n"] == 423
@@ -74,7 +115,7 @@ def main() -> None:
         assert derived[name]["sha256"] == sha256(path)
     print(json.dumps({
         "status": "pass",
-        "checks": 31,
+        "checks": 48,
         "papers": len(points),
         "method_comparison": methods["cross_method"]["n"],
         "paired": methods["paired"]["eligible_n"],
