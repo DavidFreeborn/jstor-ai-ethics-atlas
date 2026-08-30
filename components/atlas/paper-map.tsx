@@ -11,10 +11,12 @@ type Transform = { scale: number; tx: number; ty: number };
 type ScreenPoint = { paper: PaperPoint; x: number; y: number };
 
 const PROVENANCE_COLOURS = {
-  core: '#315A7D',
-  reassigned: '#C18A38',
-  outlier: '#91969A',
+  core: '#36C5F0',
+  reassigned: '#FFB000',
+  outlier: '#D8DEE9',
 };
+
+const PICK_CELL = 24;
 
 function hexToRgba(hex: string, alpha: number) {
   const normalized = hex.replace('#', '');
@@ -25,8 +27,8 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${red},${green},${blue},${alpha})`;
 }
 
-function ramp(value: number | null, low = '#D9DEDF', high = '#315A7D') {
-  if (value === null || !Number.isFinite(value)) return '#B8BDBF';
+function ramp(value: number | null, low = '#6B7280', high = '#67E8F9') {
+  if (value === null || !Number.isFinite(value)) return '#9CA3AF';
   const t = Math.max(0, Math.min(1, value));
   const parse = (hex: string) => [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16));
   const a = parse(low);
@@ -42,17 +44,17 @@ function paperColour(
 ) {
   switch (lens) {
     case 'bertopic':
-      return topicColours.get(paper.bertopic) ?? '#91969A';
+      return topicColours.get(paper.bertopic) ?? '#D8DEE9';
     case 'bertopic_reduced':
-      return topicColours.get(paper.bertopic_reduced) ?? '#91969A';
+      return topicColours.get(paper.bertopic_reduced) ?? '#D8DEE9';
     case 'provenance':
       return PROVENANCE_COLOURS[paper.provenance];
     case 'lda':
-      return paper.lda ? topicColours.get(paper.lda.topic) ?? '#91969A' : '#D1D4D5';
+      return paper.lda ? topicColours.get(paper.lda.topic) ?? '#D8DEE9' : '#6B7280';
     case 'lda_dominance':
-      return ramp(paper.lda?.dominance ?? null, '#E5E8E7', '#3E6E61');
+      return ramp(paper.lda?.dominance ?? null, '#64748B', '#2DFF9A');
     case 'alignment':
-      return ramp(paper.alignment, '#E5E8E7', '#765C8E');
+      return ramp(paper.alignment, '#64748B', '#FF5FD2');
   }
 }
 
@@ -114,6 +116,24 @@ export function PaperMap({
     [data.geometry.bounds, size, transform],
   );
 
+  const screenPoints = useMemo<ScreenPoint[]>(
+    () => data.points.map((paper) => ({ paper, ...project(paper) })),
+    [data.points, project],
+  );
+  const pointById = useMemo(
+    () => new Map(screenPoints.map((point) => [point.paper.id, point])),
+    [screenPoints],
+  );
+  const pickGrid = useMemo(() => {
+    const grid = new Map<string, ScreenPoint[]>();
+    for (const point of screenPoints) {
+      const key = `${Math.floor(point.x / PICK_CELL)}:${Math.floor(point.y / PICK_CELL)}`;
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(point); else grid.set(key, [point]);
+    }
+    return grid;
+  }, [screenPoints]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -135,47 +155,53 @@ export function PaperMap({
     });
     const filteredIds = topicFilter === null ? null : new Set(filtered.map((paper) => paper.id));
 
-    for (const paper of data.points) {
-      const point = project(paper);
+    for (const point of screenPoints) {
+      const paper = point.paper;
       if (point.x < -8 || point.y < -8 || point.x > size.width + 8 || point.y > size.height + 8) continue;
       const active = filteredIds === null || filteredIds.has(paper.id);
       const colour = paperColour(paper, lens, topicColours);
       context.beginPath();
       context.arc(point.x, point.y, active ? 2.25 : 1.5, 0, Math.PI * 2);
-      context.fillStyle = active ? hexToRgba(colour.startsWith('#') ? colour : '#66757D', 0.82) : 'rgba(119,126,130,.10)';
-      if (!colour.startsWith('#')) context.fillStyle = active ? colour : 'rgba(119,126,130,.10)';
+      context.fillStyle = active ? hexToRgba(colour.startsWith('#') ? colour : '#66757D', 0.95) : 'rgba(203,213,225,.08)';
+      if (!colour.startsWith('#')) context.fillStyle = active ? colour : 'rgba(203,213,225,.08)';
       context.fill();
     }
 
     if (selected) {
-      const point = project(selected);
+      const point = pointById.get(selected.id);
+      if (!point) return;
       context.beginPath();
-      context.arc(point.x, point.y, 7, 0, Math.PI * 2);
-      context.strokeStyle = '#172126';
-      context.lineWidth = 1.5;
+      context.arc(point.x, point.y, 7.5, 0, Math.PI * 2);
+      context.strokeStyle = '#FFFFFF';
+      context.lineWidth = 2;
       context.stroke();
       context.beginPath();
       context.arc(point.x, point.y, 3, 0, Math.PI * 2);
       context.fillStyle = paperColour(selected, lens, topicColours);
       context.fill();
     }
-  }, [data.points, lens, project, selected, size, topicColours, topicFilter]);
+  }, [data.points, lens, pointById, screenPoints, selected, size, topicColours, topicFilter]);
 
   const nearest = useCallback(
     (x: number, y: number) => {
       let best: ScreenPoint | null = null;
       let bestDistance = 11;
-      for (const paper of data.points) {
-        const point = project(paper);
-        const distance = Math.hypot(point.x - x, point.y - y);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = { paper, ...point };
+      const cellX = Math.floor(x / PICK_CELL);
+      const cellY = Math.floor(y / PICK_CELL);
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (const point of pickGrid.get(`${cellX + dx}:${cellY + dy}`) ?? []) {
+            const distance = Math.hypot(point.x - x, point.y - y);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              best = point;
+            }
+          }
         }
       }
       return best;
     },
-    [data.points, project],
+    [pickGrid],
   );
 
   const reset = useCallback(() => {
@@ -211,7 +237,8 @@ export function PaperMap({
             setTransform((current) => ({ ...current, tx: dragRef.current!.tx + dx, ty: dragRef.current!.ty + dy }));
             setHovered(null);
           } else {
-            setHovered(nearest(x, y));
+            const next = nearest(x, y);
+            setHovered((current) => current?.paper.id === next?.paper.id ? current : next);
           }
         }}
         onPointerUp={(event) => {
@@ -220,6 +247,10 @@ export function PaperMap({
           dragRef.current = null;
         }}
         onPointerLeave={() => {
+          dragRef.current = null;
+          setHovered(null);
+        }}
+        onPointerCancel={() => {
           dragRef.current = null;
           setHovered(null);
         }}
@@ -240,38 +271,37 @@ export function PaperMap({
         }}
       />
 
-      <div className="absolute bottom-4 left-4 flex items-center gap-1 border border-border/80 bg-background/90 p-1 shadow-sm backdrop-blur-sm">
+      <div className="absolute bottom-4 left-4 flex items-center gap-1 border border-white/15 bg-[#11151a]/94 p-1 text-white shadow-sm backdrop-blur-sm">
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Zoom in" onClick={() => setTransform((current) => ({ ...current, scale: Math.min(8, current.scale * 1.25) }))} />}>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Zoom in" onClick={() => setTransform((current) => ({ ...current, scale: Math.min(8, current.scale * 1.25) }))} />}>
             <Plus />
           </TooltipTrigger>
           <TooltipContent>Zoom in</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={() => setTransform((current) => ({ ...current, scale: Math.max(0.7, current.scale / 1.25) }))} />}>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Zoom out" onClick={() => setTransform((current) => ({ ...current, scale: Math.max(0.7, current.scale / 1.25) }))} />}>
             <Minus />
           </TooltipTrigger>
           <TooltipContent>Zoom out</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Reset map" onClick={reset} />}>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Reset map" onClick={reset} />}>
             <LocateFixed />
           </TooltipTrigger>
           <TooltipContent>Reset view</TooltipContent>
         </Tooltip>
-        <span className="px-1.5 font-mono text-[10px] tabular-nums text-muted-foreground">{transform.scale.toFixed(1)}×</span>
+        <span className="px-1.5 font-mono text-[10px] tabular-nums text-white/60">{transform.scale.toFixed(1)}×</span>
       </div>
 
       {hovered ? (
         <div
-          className="pointer-events-none absolute z-10 max-w-[280px] border border-border bg-background/96 px-3 py-2 text-xs shadow-md"
+          className="pointer-events-none absolute z-10 max-w-[280px] border border-white/20 bg-[#11151a]/96 px-3 py-2 text-xs text-white shadow-md"
           style={{ left: Math.min(hovered.x + 12, size.width - 292), top: Math.max(8, hovered.y - 46) }}
         >
           <p className="line-clamp-2 font-medium leading-snug">{hovered.paper.title}</p>
-          <p className="mt-1 truncate text-muted-foreground">{hovered.paper.journal || 'Journal unavailable'}</p>
+          <p className="mt-1 truncate text-white/60">{hovered.paper.journal || 'Journal unavailable'}</p>
         </div>
       ) : null}
     </div>
   );
 }
-

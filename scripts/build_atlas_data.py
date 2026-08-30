@@ -39,19 +39,25 @@ PROJECTION = {
     "random_state": 42,
 }
 
-NETWORK_TOP_PALETTE = {
-    1: "#6E5B8A", 2: "#4F7D61", 3: "#B88938",
-    4: "#B0604B", 5: "#3F7C85", 6: "#A4546C",
-}
+HIGH_CONTRAST_PALETTE = [
+    "#35D7FF", "#FF0F0F", "#AF38FF", "#FFFF0F", "#0CC20C", "#0C85C2",
+    "#E0A955", "#FF61CA", "#0FFF9F", "#C26D0C", "#4AC29A", "#616BFF",
+    "#C24AAA", "#61A0FF", "#B6E00D", "#FF7661", "#FF0FFF", "#FFD561",
+    "#61FFF4", "#FF0F7F", "#0CAAC2", "#0FFF0F", "#92C24A", "#D561FF",
+    "#E05568", "#31E060", "#55E0C5", "#C2910C", "#D20DE0", "#FF0FBF",
+    "#BFFF0F", "#E0C40D", "#FF618B", "#FF61FF", "#9661FF", "#55BBE0",
+    "#3888FF",
+]
 
-NETWORK_SPLIT_PALETTE = {
-    "1.1": "#5D4C78", "1.2": "#6E5B8A", "1.3": "#77628B",
-    "1.4": "#8B77A2", "1.5": "#806C97", "1.6": "#A58EAE", "1.7": "#514065",
-    "2.1": "#4F7D61", "2.2": "#5D8A6B", "2.3": "#355F48", "2.4": "#9AAF88",
-    "2.5": "#3E6C51", "2.6": "#8AA590", "2.7": "#678C71", "2.8": "#779A82",
-    "3": "#B88938", "4.1": "#A94E3E", "4.2": "#C47A5A", "4.3": "#9D5444",
-    "5": "#3F7C85", "6": "#A4546C",
-}
+NETWORK_TOP_PALETTE = dict(zip(range(1, 7), [
+    HIGH_CONTRAST_PALETTE[index] for index in (0, 1, 2, 3, 4, 7)
+]))
+NETWORK_SPLIT_IDS = [
+    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7",
+    "2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "2.8",
+    "3", "4.1", "4.2", "4.3", "5", "6",
+]
+NETWORK_SPLIT_PALETTE = dict(zip(NETWORK_SPLIT_IDS, HIGH_CONTRAST_PALETTE[:21]))
 
 EMBEDDINGS = {
     "SPECTER": SOURCE / "specter.npy",
@@ -59,23 +65,8 @@ EMBEDDINGS = {
     "S-SciBERT": SOURCE / "s_scibert.npy",
 }
 
-BER_PALETTE = [
-    "#315A7D", "#B65C3A", "#4B8063", "#8D6AA8", "#C68A2E", "#4F8F9D",
-    "#A64B62", "#6D7B3A", "#7B6D5E", "#3C78A8", "#C26D4A", "#588157",
-    "#8C6BB1", "#D09A3C", "#387C8D", "#B04A68", "#7C8747", "#7A6554",
-    "#5686A6", "#A96B45", "#5F8D72", "#866E9F", "#C28A3A", "#4D8792",
-    "#A95D72", "#72834B",
-]
-
-LDA_PALETTE = [
-    "#355C7D", "#B5654D", "#4F7D61", "#7567A3", "#C28A35", "#3F7C85",
-    "#A74E66", "#748044", "#766357", "#4B7FA3", "#B96B4D", "#5B8768",
-    "#83699B", "#C59A48", "#4A8790", "#A95770", "#7A864F", "#806B5B",
-    "#5B86A1", "#AD744D", "#668B72", "#8C76A0", "#B88F4A", "#57868A",
-    "#A96778", "#778359", "#6B7894", "#B27765", "#527A70", "#92739A",
-    "#AA884E", "#567E91", "#9A657A", "#75866A", "#6E708E", "#A87A68",
-    "#647C68",
-]
+BER_PALETTE = HIGH_CONTRAST_PALETTE[:26]
+LDA_PALETTE = HIGH_CONTRAST_PALETTE
 
 KNOWN_LDA_STABILITY = {
     12: {"coherence": 0.4445, "recurrence": 0.784727},
@@ -321,7 +312,7 @@ def bertopic_topics() -> tuple[dict[int, dict], dict[int, str]]:
         representation = ast.literal_eval(row["Representation"])
         if topic == -1:
             label = "Unresolved outliers"
-            colour = "#8B8F93"
+            colour = "#CBD5E1"
         else:
             terms = [clean(term) for term in representation[:3]]
             label = " · ".join(terms[:2])
@@ -352,7 +343,7 @@ def ladder_data() -> tuple[dict[str, int], list[dict]]:
         if topic == -1:
             terms = []
             label = "Unresolved outliers"
-            colour = "#8B8F93"
+            colour = "#CBD5E1"
         else:
             rows = final[final["topic"].astype(str) == f"topic_{topic}"].sort_values("rank")
             terms = rows["word"].astype(str).tolist()[:10]
@@ -693,8 +684,7 @@ def build_network() -> tuple[dict, dict]:
     full = source["full"]
     bipartite = source["bipartite"]
     meta = source["meta"]
-    # Retain community identities while replacing the source software's neon
-    # defaults with a colour-vision-friendlier, print-compatible atlas palette.
+    # Retain community identities while applying the audited dark-field palette.
     for node in full["nodes"]:
         node["topColour"] = NETWORK_TOP_PALETTE[int(node["topCommunity"])]
         node["splitColour"] = NETWORK_SPLIT_PALETTE[str(node["splitCommunity"])]
