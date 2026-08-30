@@ -6,6 +6,8 @@ export const CATEGORY_COLOURS = [
   '#E05568', '#31E060', '#55E0C5', '#C2910C', '#D20DE0', '#FF0FBF',
 ] as const;
 
+export const OTHER_COLOUR = '#B8C5FF';
+
 export const AGREEMENT_STOPS = ['#3B1B78', '#3156B5', '#00A9B7', '#55D56B', '#FFE34D'] as const;
 
 export function normaliseText(value: string) {

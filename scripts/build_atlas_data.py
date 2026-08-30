@@ -568,6 +568,21 @@ def build_map(projection: np.ndarray, projection_quality: dict) -> tuple[dict, d
     abstract_index = index.set_index("doc_id").to_dict("index")
     agreement = neighbourhood_agreement(index, bert_lookup, lda_lookup)
 
+    journal_names: defaultdict[str, Counter[str]] = defaultdict(Counter)
+    for record in catalogue:
+        journal_id = clean(record.get("journal_id", ""))
+        journal = clean(lda_lookup.get(clean(record["id"]), {}).get("journal", ""))
+        if journal_id and journal:
+            journal_names[journal_id][journal] += 1
+    journal_lookup = {}
+    ambiguous_journal_ids = []
+    for journal_id, names in journal_names.items():
+        normalized = {name.casefold() for name in names}
+        if len(normalized) == 1:
+            journal_lookup[journal_id] = names.most_common(1)[0][0]
+        else:
+            ambiguous_journal_ids.append(journal_id)
+
     joined = pd.DataFrame(
         {
             "doc_id": index["doc_id"],
@@ -588,6 +603,7 @@ def build_map(projection: np.ndarray, projection_quality: dict) -> tuple[dict, d
         doc_id = clean(record["id"])
         b = bert_lookup.get(doc_id)
         lda = lda_lookup.get(doc_id)
+        direct_journal = clean(lda.get("journal", "")) if lda else ""
         point = {
             "i": position,
             "id": doc_id,
@@ -597,7 +613,7 @@ def build_map(projection: np.ndarray, projection_quality: dict) -> tuple[dict, d
             "year": clean(record.get("year", "")),
             "type": clean(record.get("type", "")),
             "publisher": clean(record.get("publisher", "")),
-            "journal": clean(lda.get("journal", "")) if lda else "",
+            "journal": direct_journal or journal_lookup.get(clean(record.get("journal_id", "")), ""),
             "authors": record.get("authors", []),
             "keywords": record.get("keywords", []),
             "coauthor_count": len(
@@ -680,6 +696,10 @@ def build_map(projection: np.ndarray, projection_quality: dict) -> tuple[dict, d
         "bertopic_rows": len(bert),
         "lda_joined": sum("lda_topic" in point for point in points),
         "agreement_eligible": len(agreement_values),
+        "journal_direct": sum(bool(clean(lda_lookup.get(point["id"], {}).get("journal", ""))) for point in points),
+        "journal_propagated": sum(bool(point["journal"]) and not bool(clean(lda_lookup.get(point["id"], {}).get("journal", ""))) for point in points),
+        "journal_identifier_names": len(journal_lookup),
+        "journal_identifier_ambiguous": len(ambiguous_journal_ids),
         "bertopic_outliers": int((bert["topic"] == -1).sum()),
         "provenance_counts": dict(provenance_counts),
         "cross_method": comparison,
@@ -959,7 +979,8 @@ def main() -> None:
         "derived": derived,
         "limitations": [
             "The common semantic terrain uses titles because titles are the only semantic text field available for all 7,076 records.",
-            "BERTopic covers 2,057 records; LDA covers 2,052; 2,015 of those LDA rows provide non-empty journal metadata.",
+            "BERTopic covers 2,057 records and the released abstract-only LDA model covers 2,052.",
+            "Journal titles are propagated only through unambiguous exact JSTOR journal identifiers established by named source records.",
             "Controlled keywords are exact normalized intersections with the frozen 534-keyword network vocabulary.",
             "Per-topic LDA stability is available for the most and least stable published topics; the complete stability table was not distributed with this release.",
             "Creator strings and publisher names are retained as supplied and are not authority-normalized.",

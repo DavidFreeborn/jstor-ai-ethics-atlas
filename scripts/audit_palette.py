@@ -39,8 +39,10 @@ def main() -> None:
     network = json.loads((ROOT / "public" / "data" / "network.json").read_text(encoding="utf-8"))
     visual_source = (ROOT / "lib" / "atlas-visual.ts").read_text(encoding="utf-8")
     category_colours = re.findall(r"#[0-9A-Fa-f]{6}", visual_source.split("] as const", 1)[0])
+    other_colour = re.search(r"OTHER_COLOUR = '(#[0-9A-Fa-f]{6})'", visual_source).group(1)
     results = [
         audit("selectable categories", [colour.upper() for colour in category_colours]),
+        audit("selectable categories + Other", [colour.upper() for colour in category_colours] + [other_colour.upper()]),
         audit("BERTopic", unique_colours([topic for topic in atlas["topics"]["bertopic"] if topic["id"] >= 0])),
         audit("LDA", unique_colours(atlas["topics"]["lda"])),
         audit("six-community partition", unique_colours(network["meta"]["topCommunities"])),

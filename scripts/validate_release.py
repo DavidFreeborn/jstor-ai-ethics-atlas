@@ -40,7 +40,7 @@ def main() -> None:
         "lda": 2052,
         "neighbour_agreement": 1797,
         "publisher": 7076,
-        "journal": 2015,
+        "journal": 3784,
         "keywords": 6023,
         "authors": 5265,
     }
@@ -49,7 +49,10 @@ def main() -> None:
     assert sum(topic["count"] for topic in atlas["topics"]["lda"]) == 2052
     assert sum("bertopic" in paper for paper in points) == 2057
     assert sum("lda_topic" in paper for paper in points) == 2052
-    assert sum(bool(paper["journal"]) for paper in points) == 2015
+    assert sum(bool(paper["journal"]) for paper in points) == 3784
+    assert manifest["map_audit"]["journal_direct"] == 2015
+    assert manifest["map_audit"]["journal_propagated"] == 1769
+    assert manifest["map_audit"]["journal_identifier_ambiguous"] == 2
     assert sum(bool(paper["keywords"]) for paper in points) == 6023
     assert sum(bool(paper["authors"]) for paper in points) == 5265
     assert all(paper["title"] and paper["publisher"] for paper in points)
@@ -115,7 +118,7 @@ def main() -> None:
         assert derived[name]["sha256"] == sha256(path)
     print(json.dumps({
         "status": "pass",
-        "checks": 48,
+        "checks": 51,
         "papers": len(points),
         "method_comparison": methods["cross_method"]["n"],
         "paired": methods["paired"]["eligible_n"],

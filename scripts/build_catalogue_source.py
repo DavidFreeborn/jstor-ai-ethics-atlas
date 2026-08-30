@@ -35,6 +35,15 @@ def as_list(value: object) -> list[str]:
     return [text] if text else []
 
 
+def identifier_value(value: object, name: str) -> str:
+    if not isinstance(value, list):
+        return ""
+    for item in value:
+        if isinstance(item, dict) and clean(item.get("name")) == name:
+            return clean(item.get("value"))
+    return ""
+
+
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -89,6 +98,7 @@ def main() -> None:
                 "year": clean(record.get("publicationYear") or record.get("datePublished")),
                 "type": clean(record.get("docType")) or "Unknown",
                 "publisher": clean(record.get("publisher")),
+                "journal_id": identifier_value(record.get("identifier"), "journal_id"),
                 "authors": creators,
                 "keywords": controlled_keywords,
                 "has_full_text": bool(clean(record.get("fullText"))),

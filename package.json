@@ -11,6 +11,7 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint app components/atlas lib",
     "test:network": "node scripts/test_network_analysis.mjs",
+    "test:association": "node scripts/test_association_analysis.mjs",
     "format": "oxfmt"
   },
   "dependencies": {
