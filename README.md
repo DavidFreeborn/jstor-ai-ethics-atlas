@@ -25,7 +25,7 @@ Publisher, creator and keyphrase fields are direct paper-level catalogue metadat
 
 The opening view centres on the main body of papers. Reset returns there; Fit all includes every outlier. In 3D, drag to rotate and Shift-drag (or two fingers) to pan. The wheel and +/− controls zoom. Keyboard: arrows navigate, Shift-arrows pan in 3D, Home resets, Shift-Home fits all.
 
-Select a topic, click a keyword/publication name, or use Select area. The same paper IDs remain highlighted when changing lenses or dimensions; the × beside the selection clears it. Facet checkboxes control the palette; “Select papers in coloured values” selects their union. Clicking a paper under a publication, keyword or authorship lens selects its metadata neighbours. Hollow selected marks lack the current lens data.
+Select a topic, click a keyword/publication name, or use Select area. The same paper IDs remain highlighted when changing lenses or dimensions. Use **× Deselect** in the bottom-left toolbar, the × beside the selection, or Escape on the map to clear the selection and paper details without changing the lens, palette or camera. Facet checkboxes control the palette; “Select papers in coloured values” selects their union. Clicking a paper under a publication, keyword or authorship lens selects its metadata neighbours. Hollow selected marks lack the current lens data.
 
 The 3D projection uses the original 768-dimensional title embeddings, not artificial depth. Its source hashes, parameters and three-seed quality audit are recorded in [`docs/PROJECTION_3D_AUDIT.json`](docs/PROJECTION_3D_AUDIT.json). Projection distances and apparent boundaries are approximate; 2D and 3D are distinct exploratory layouts, not additional model assignments.
 

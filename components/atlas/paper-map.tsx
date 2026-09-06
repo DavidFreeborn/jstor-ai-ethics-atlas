@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { LocateFixed, Maximize, Minus, Plus, Scan } from 'lucide-react';
+import { LocateFixed, Maximize, Minus, Plus, Scan, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -42,6 +42,7 @@ export function PaperMap({
   onSelect,
   group,
   onGroup,
+  onClearSelection,
   selections,
   colourSlots,
 }: {
@@ -51,6 +52,7 @@ export function PaperMap({
   onSelect: (paper: PaperPoint | null) => void;
   group: PaperGroup | null;
   onGroup: (group: PaperGroup) => void;
+  onClearSelection: () => void;
   selections: FacetSelections;
   colourSlots: ColourSlots;
 }) {
@@ -189,6 +191,10 @@ export function PaperMap({
       setBoxMode(false);
     },
     error: setRendererError,
+    clear: () => {
+      setBoxMode(false);
+      onClearSelection();
+    },
   };
   const latest = useRef({ visual, callbacks });
   useLayoutEffect(() => {
@@ -269,9 +275,9 @@ export function PaperMap({
         Plus and minus zoom. Arrow keys pan in 2D and rotate in 3D; Shift and
         arrows pan in 3D. Home resets; Shift Home fits all. Drag rotates in 3D;
         Shift-drag or two fingers pan. Use Select area to select papers within a
-        rectangle.
+        rectangle. Escape deselects papers without changing the view.
       </span>
-      <div className="absolute bottom-4 left-4 flex max-w-[calc(100%-32px)] flex-wrap items-center gap-1 border border-white/20 bg-[#11151a] p-1 text-white">
+      <div className="absolute bottom-4 left-4 z-30 flex max-w-[calc(100%-32px)] flex-wrap items-center gap-1 border border-white/20 bg-[#11151a] p-1 text-white">
         <div
           className="mr-1 flex border-r border-white/20 pr-2"
           aria-label="Map dimension"
@@ -322,6 +328,27 @@ export function PaperMap({
         >
           <Scan />
           Select area
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="rounded-none border-l border-white/20 text-white hover:bg-white/10 hover:text-white disabled:text-white/40"
+          aria-label="Deselect papers"
+          aria-keyshortcuts="Escape"
+          disabled={!group && !selected}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setBoxMode(false);
+              onClearSelection();
+            }
+          }}
+          onClick={() => {
+            setBoxMode(false);
+            onClearSelection();
+          }}
+        >
+          <X />
+          Deselect
         </Button>
       </div>
       {dimension === '3d' && !coordinates ? (

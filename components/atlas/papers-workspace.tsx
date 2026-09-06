@@ -526,6 +526,10 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
           ),
     );
   };
+  const clearSelection = () => {
+    setGroup(null);
+    setSelectedId(null);
+  };
   const controls = (
     <LensControls
       data={data}
@@ -583,6 +587,7 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
           onSelect={selectPaper}
           group={group}
           onGroup={setGroup}
+          onClearSelection={clearSelection}
           selections={selections}
           colourSlots={colourSlots}
         />
@@ -605,7 +610,7 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
             <button
               aria-label="Clear paper selection"
               className="ml-auto shrink-0 p-1 text-white/70 hover:text-white"
-              onClick={() => setGroup(null)}
+              onClick={clearSelection}
             >
               <X className="size-4" />
             </button>

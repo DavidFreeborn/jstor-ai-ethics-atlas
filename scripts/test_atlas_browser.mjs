@@ -33,7 +33,9 @@ const report = { url, errors: [], checks: [], performance: [] };
 const browser = await (
   process.env.ATLAS_BROWSER === 'firefox' ? firefox : chromium
 ).launch({ headless: true });
-const output = process.env.ATLAS_AUDIT_DIR || `work/audit/${process.env.ATLAS_BROWSER || 'chromium'}-${new URL(url).host.replaceAll(':','-')}`;
+const output =
+  process.env.ATLAS_AUDIT_DIR ||
+  `work/audit/${process.env.ATLAS_BROWSER || 'chromium'}-${new URL(url).host.replaceAll(':', '-')}`;
 await mkdir(output, { recursive: true });
 try {
   for (let retry = 0; retry < 80; retry++) {
@@ -178,7 +180,15 @@ try {
         .isVisible(),
     );
   }
-  await page.getByRole('button', { name: 'Close paper details' }).click();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await tick();
+  assert.equal(
+    await page.getByRole('button', { name: 'Close paper details' }).count(),
+    0,
+  );
+  assert(
+    await page.getByRole('button', { name: 'Deselect papers' }).isDisabled(),
+  );
   report.checks.push('120 real pointer paper selections and detail renders');
   await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
   const topic = [...data.topics.bertopic]
@@ -205,6 +215,18 @@ try {
     assert.equal((await stats()).selectionHash, selected.selectionHash);
   }
   report.checks.push('Exact topic selection IDs preserved across six lenses');
+  const beforeDeselect = await stats();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await tick();
+  assert.equal((await stats()).selectionHash, null);
+  assert.deepEqual((await stats()).camera, beforeDeselect.camera);
+  assert(
+    await page.getByRole('button', { name: 'Deselect papers' }).isDisabled(),
+  );
+  assert.equal(await page.getByLabel('Persistent paper selection').count(), 0);
+  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page.getByRole('button').filter({ hasText: topic.label }).click();
+  await page.getByRole('button', { name: /^All papers/ }).click();
   await page.getByRole('button', { name: '3D', exact: true }).click();
   await page.waitForFunction(() =>
     document
@@ -216,6 +238,22 @@ try {
   assert.equal((await stats()).selectionHash, selected.selectionHash);
   assert.equal((await stats()).dimension, '3d');
   await page.screenshot({ path: `${output}/new-3d-selected.png` });
+  const beforeEscape = await stats();
+  await page.getByRole('textbox', { name: 'Search papers' }).focus();
+  await page.keyboard.press('Escape');
+  await tick();
+  assert.equal((await stats()).selectionHash, beforeEscape.selectionHash);
+  await canvas.focus();
+  await page.keyboard.press('Escape');
+  await tick();
+  assert.equal((await stats()).selectionHash, null);
+  assert.deepEqual((await stats()).camera, beforeEscape.camera);
+  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page.getByRole('button').filter({ hasText: topic.label }).click();
+  await page.getByRole('button', { name: /^All papers/ }).click();
+  report.checks.push(
+    'Toolbar and Escape deselect across lenses/dimensions without moving the camera; search Escape leaves selection intact',
+  );
   for (let i = 0; i < 25; i++) {
     await canvas.evaluate((c, i) => {
       const b = c.getBoundingClientRect(),
@@ -382,6 +420,30 @@ try {
   await page.getByRole('button', { name: /^Publisher/ }).click();
   await tick();
   assert.equal((await stats()).selected, keyword.count);
+  const paletteBefore = await page
+    .getByRole('checkbox')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute('aria-checked')),
+    );
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await tick();
+  assert.equal((await stats()).selectionHash, null);
+  assert.deepEqual(
+    await page
+      .getByRole('checkbox')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute('aria-checked')),
+      ),
+    paletteBefore,
+  );
+  await page.getByRole('button', { name: /^Keywords/ }).click();
+  await page
+    .getByRole('button', {
+      name: `Select ${keyword.value} papers`,
+      exact: true,
+    })
+    .click();
+  await page.getByRole('button', { name: /^Publisher/ }).click();
   for (let i = 0; i < 20; i++) {
     const checkbox = page.getByRole('checkbox').nth(i % 10);
     await checkbox.click();
@@ -532,11 +594,41 @@ try {
     );
     await mobile.getByRole('button', { name: 'Lens', exact: true }).click();
     await mobile.getByRole('button', { name: /^Keywords/ }).click();
+    await mobile
+      .getByRole('button', {
+        name: `Select ${keyword.value} papers`,
+        exact: true,
+      })
+      .click();
     await mobile.keyboard.press('Escape');
+    await mobile
+      .getByRole('dialog', { name: 'Lens', exact: true })
+      .waitFor({ state: 'hidden' });
     assert(await mobile.locator('canvas').isVisible());
+    await mobile.getByLabel('Persistent paper selection').waitFor();
+    const mobileCamera = await mobile
+      .locator('canvas')
+      .evaluate((c) => JSON.parse(c.dataset.renderer).camera);
+    await mobile.screenshot({ path: `${output}/mobile-selected.png` });
+    await mobile.getByRole('button', { name: 'Deselect papers' }).tap();
+    await mobile.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('canvas').dataset.renderer)
+          .selectionHash === null,
+    );
+    assert.deepEqual(
+      await mobile
+        .locator('canvas')
+        .evaluate((c) => JSON.parse(c.dataset.renderer).camera),
+      mobileCamera,
+    );
+    assert.equal(
+      await mobile.getByLabel('Persistent paper selection').count(),
+      0,
+    );
     await touch.close();
     report.checks.push(
-      'Native two-finger touch input and mobile lens panel at 3× pixel density',
+      'Native two-finger touch input, mobile lens panel, and tap-to-deselect at 3× pixel density',
     );
   }
   assert.deepEqual(report.errors, []);

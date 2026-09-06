@@ -39,6 +39,7 @@ type Callbacks = {
   hover: (point: HoverPoint | null) => void;
   box: (ids: Set<string>) => void;
   error: (error: Error) => void;
+  clear: () => void;
 };
 
 /** Owns camera/event lifetime. Camera changes never enqueue React state updaters. */
@@ -607,8 +608,10 @@ export class PaperRenderer {
     if (event.key === '+' || event.key === '=') this.zoom(1.25);
     else if (event.key === '-') this.zoom(1 / 1.25);
     else if (event.key === 'Home') this.reset(event.shiftKey);
-    else if (event.key === 'Escape') this.cancel();
-    else if (
+    else if (event.key === 'Escape') {
+      this.cancel();
+      this.callbacks.clear();
+    } else if (
       ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
     ) {
       const dx =
