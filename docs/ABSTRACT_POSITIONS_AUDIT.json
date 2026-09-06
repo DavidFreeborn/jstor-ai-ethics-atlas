@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "embedding": "S-SciBERT abstract embeddings",
+  "method": "Independent direct UMAP projections of released abstract embeddings",
+  "parameters": {
+    "n_neighbors": 30,
+    "min_dist": 0.08,
+    "metric": "cosine",
+    "n_jobs": 1,
+    "random_state": 42
+  },
+  "source_sha256": "0cac4c32fb90b8ac5149249ea01dcd3ecdd53853971a67e89b6c625e5b3c8633",
+  "index_sha256": "7cd9505648c8fd6abd3913f527ab334cfec9f39ffd49c702f96e7d09935d3f64",
+  "audit": {
+    "2": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.826532,
+        "neighbour_recall_15": 0.210663,
+        "neighbour_recall_30": 0.239912,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.830493,
+        "neighbour_recall_15": 0.207292,
+        "neighbour_recall_30": 0.241209,
+        "seed_neighbour_overlap_15": 0.497683
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.832723,
+        "neighbour_recall_15": 0.21332,
+        "neighbour_recall_30": 0.243397,
+        "seed_neighbour_overlap_15": 0.465014
+      }
+    ],
+    "3": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.876198,
+        "neighbour_recall_15": 0.265662,
+        "neighbour_recall_30": 0.28373,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.873691,
+        "neighbour_recall_15": 0.263134,
+        "neighbour_recall_30": 0.282677,
+        "seed_neighbour_overlap_15": 0.694733
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.875664,
+        "neighbour_recall_15": 0.263199,
+        "neighbour_recall_30": 0.283228,
+        "seed_neighbour_overlap_15": 0.715281
+      }
+    ]
+  },
+  "papers": 2057,
+  "output_sha256": "5a71bdb1dddb3540621990b705b00dad0a22d71b32e3b0d16c1bc862f6a683f4",
+  "software": {
+    "numpy": "2.4.2",
+    "sklearn": "1.8.0",
+    "umap": "0.5.11"
+  },
+  "limitations": [
+    "Uses the frozen abstract encoder output, not preview snippets. Upstream encoder token limits still apply.",
+    "Title positions use SPECTER; abstract positions use the released BERTopic-input S-SciBERT embeddings. Switching changes both text source and encoder, not text alone.",
+    "Cohort restriction changes density. No labels or manual cluster offsets enter either projection."
+  ]
+}

@@ -42,6 +42,21 @@ def main() -> None:
     assert sha256(PUBLIC / "projection-3d.json") == projection_audit["output_sha256"]
     assert projection_3d["parameters"] == projection_audit["parameters"]
     assert all(0.85 <= run["trustworthiness_15"] <= 1 for run in projection_audit["runs"])
+    abstracts = load("positions-abstracts.json")
+    abstract_audit = json.loads((ROOT / "docs/ABSTRACT_POSITIONS_AUDIT.json").read_text(encoding="utf-8"))
+    assert abstracts["version"] == 1
+    assert len(abstracts["ids"]) == len(set(abstracts["ids"])) == 2057
+    assert set(abstracts["ids"]) == {p["id"] for p in points if "bertopic" in p}
+    assert sha256(PUBLIC / "positions-abstracts.json") == abstract_audit["output_sha256"]
+    for dimensions in (2, 3):
+        coordinates = abstracts[f"coordinates{dimensions}d"]
+        assert len(coordinates) == 2057
+        assert all(len(row) == dimensions and all(math.isfinite(v) for v in row) for row in coordinates)
+        assert [run["seed"] for run in abstracts["audit"][str(dimensions)]] == [42, 43, 44]
+    assert abstracts["parameters"] == abstract_audit["parameters"]
+    assert abstracts["source_sha256"] == abstract_audit["source_sha256"]
+    assert abstracts["source_sha256"] == next(item["sha256"] for item in manifest["sources"] if item["file"] == "s_scibert.npy")
+    assert abstracts["index_sha256"] == next(item["sha256"] for item in manifest["sources"] if item["file"] == "doc_index.csv")
     coverage = atlas["cohort"]["coverage"]
     assert coverage == {
         "bertopic": 2057,

@@ -25,7 +25,66 @@ import {
 } from '../lib/paper-selection.ts';
 import { decodeHtmlEntities } from '../lib/display-text.ts';
 import type { MapData } from '../lib/atlas-types.ts';
+import {
+  abstractMap,
+  validateAbstractPositions,
+} from '../lib/paper-positions.ts';
 const data: MapData = JSON.parse(readFileSync('public/data/map.json', 'utf8'));
+const payload = JSON.parse(
+  readFileSync('public/data/positions-abstracts.json', 'utf8'),
+);
+const abstractPositions = validateAbstractPositions(payload, data);
+const abstracts = abstractMap(data, abstractPositions);
+assert.equal(abstracts.points.length, 2057);
+assert.equal(abstracts.cohort.coverage.lda, 2051);
+assert.equal(
+  abstracts.topics.lda.reduce((sum, topic) => sum + topic.count, 0),
+  2051,
+);
+assert.deepEqual(
+  abstracts.points.map((p) => p.id),
+  payload.ids,
+);
+assert(
+  abstracts.points.every(
+    (p, i) =>
+      p.x === payload.coordinates2d[i][0] &&
+      p.y === payload.coordinates2d[i][1],
+  ),
+);
+assert.equal(
+  abstracts.facets.publishers.reduce((sum, p) => sum + p.count, 0),
+  2057,
+);
+assert.equal(
+  abstracts.facets.journals.reduce((sum, p) => sum + p.count, 0),
+  abstracts.cohort.coverage.journal,
+);
+for (const p of abstracts.points.slice(0, 30)) {
+  assert.equal(
+    p.coauthor_count,
+    abstracts.points.filter(
+      (other) =>
+        other.id !== p.id &&
+        other.authors.some((name) => p.authors.includes(name)),
+    ).length,
+  );
+}
+for (const invalid of [
+  null,
+  {},
+  { ...payload, ids: payload.ids.slice(1) },
+  { ...payload, ids: payload.ids.map(() => payload.ids[0]) },
+  { ...payload, coordinates3d: payload.coordinates2d },
+  { ...payload, coordinates2d: payload.coordinates2d.map(() => [NaN, 0]) },
+])
+  assert.throws(() => validateAbstractPositions(invalid, data), /do not match/);
+assert.equal(data.points.length, 7076);
+assert.deepEqual(
+  data,
+  JSON.parse(readFileSync('public/data/map.json', 'utf8')),
+  'Preparing the abstract map must not mutate the catalogue',
+);
 const source = JSON.parse(
   readFileSync('public/data/projection-3d.json', 'utf8'),
 );

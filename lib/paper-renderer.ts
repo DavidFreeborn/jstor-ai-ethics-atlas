@@ -54,6 +54,11 @@ export class PaperRenderer {
   private camera2: Camera2D;
   private camera3: Camera3D | null = null;
   private coordinates3: Vec3[] | null = null;
+  private positionSource = 'titles';
+  private savedCameras = new Map<
+    string,
+    { camera2: Camera2D; camera3: Camera3D | null; coordinates3: Vec3[] | null }
+  >();
   private dimension: '2d' | '3d' = '2d';
   private projected: Projected[];
   private drawOrder: Projected[] = [];
@@ -83,7 +88,7 @@ export class PaperRenderer {
     if (!context)
       throw new Error('A canvas renderer is unavailable in this browser.');
     this.context = context;
-    this.camera2 = openingCamera(data.points);
+    this.camera2 = openingCamera(data.points, data.geometry.opening_zoom);
     this.projected = data.points.map((_, index) => ({
       index,
       x: 0,
@@ -132,6 +137,32 @@ export class PaperRenderer {
     this.callbacks = callbacks;
     this.request();
   }
+  setData(data: MapData, positionSource: string) {
+    if (this.data === data) return;
+    this.savedCameras.set(this.positionSource, {
+      camera2: this.camera2,
+      camera3: this.camera3,
+      coordinates3: this.coordinates3,
+    });
+    const saved = this.savedCameras.get(positionSource);
+    this.data = data;
+    this.positionSource = positionSource;
+    this.camera2 =
+      saved?.camera2 ?? openingCamera(data.points, data.geometry.opening_zoom);
+    this.camera3 = saved?.camera3 ?? null;
+    this.coordinates3 = saved?.coordinates3 ?? null;
+    this.dimension = '2d';
+    this.projected = data.points.map((_, index) => ({
+      index,
+      x: 0,
+      y: 0,
+      depth: 1,
+      visible: false,
+    }));
+    this.drawOrder = [];
+    this.cancel();
+    this.changed();
+  }
   setDimension(dimension: '2d' | '3d', coordinates: Vec3[] | null) {
     if (coordinates && this.coordinates3 !== coordinates) {
       this.coordinates3 = coordinates;
@@ -176,7 +207,11 @@ export class PaperRenderer {
         y: (b.y[0] + b.y[1]) / 2,
         zoom: 1,
       };
-    } else this.camera2 = openingCamera(this.data.points);
+    } else
+      this.camera2 = openingCamera(
+        this.data.points,
+        this.data.geometry.opening_zoom,
+      );
     this.changed();
   }
   private resize() {
@@ -390,6 +425,8 @@ export class PaperRenderer {
         visible: this.drawOrder.length,
         selected: group?.ids.size ?? 0,
         selectionHash: group ? groupFingerprint(group.ids) : null,
+        papers: this.data.points.length,
+        positionSource: this.positionSource,
         pointers: this.pointers.size,
         backingPixels: this.canvas.width * this.canvas.height,
       });

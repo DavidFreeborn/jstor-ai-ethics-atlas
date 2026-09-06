@@ -23,6 +23,7 @@ import {
   type PaperMark,
 } from '@/lib/paper-renderer';
 import type { PaperGroup } from '@/lib/paper-selection';
+import type { PositionSource } from '@/lib/paper-positions';
 
 const parseHex = (hex: string) =>
   [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16));
@@ -37,6 +38,9 @@ function interpolateStops(value: number, stops: readonly string[]) {
 
 export function PaperMap({
   data,
+  positionSource,
+  abstractCoordinates,
+  hasSelection,
   lens,
   selected,
   onSelect,
@@ -47,6 +51,9 @@ export function PaperMap({
   colourSlots,
 }: {
   data: MapData;
+  positionSource: PositionSource;
+  abstractCoordinates: Vec3[] | null;
+  hasSelection: boolean;
   lens: PaperLens;
   selected: PaperPoint | null;
   onSelect: (paper: PaperPoint | null) => void;
@@ -59,7 +66,13 @@ export function PaperMap({
   const canvasRef = useRef<HTMLCanvasElement>(null),
     rendererRef = useRef<PaperRenderer | null>(null);
   const [dimension, setDimension] = useState<'2d' | '3d'>('2d'),
-    [coordinates, setCoordinates] = useState<Vec3[] | null>(null);
+    [titleCoordinates, setTitleCoordinates] = useState<Vec3[] | null>(null);
+  const abstract3d = useMemo(
+    () => (abstractCoordinates ? normalise3D(abstractCoordinates) : null),
+    [abstractCoordinates],
+  );
+  const coordinates =
+    positionSource === 'abstracts' ? abstract3d : titleCoordinates;
   const [projectionError, setProjectionError] = useState(''),
     [attempt, setAttempt] = useState(0),
     [boxMode, setBoxMode] = useState(false);
@@ -196,9 +209,11 @@ export function PaperMap({
       onClearSelection();
     },
   };
-  const latest = useRef({ visual, callbacks });
+  const latest = useRef({ data, visual, callbacks });
   useLayoutEffect(() => {
-    latest.current = { visual, callbacks };
+    latest.current = { data, visual, callbacks };
+    rendererRef.current?.setData(data, positionSource);
+    rendererRef.current?.setDimension(dimension, coordinates);
     rendererRef.current?.setVisual(visual, callbacks);
   });
   useEffect(() => {
@@ -206,7 +221,7 @@ export function PaperMap({
     if (!canvas) return;
     const renderer = new PaperRenderer(
       canvas,
-      data,
+      latest.current.data,
       latest.current.visual,
       latest.current.callbacks,
     );
@@ -215,15 +230,13 @@ export function PaperMap({
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [data]);
-  useEffect(() => {
-    rendererRef.current?.setDimension(dimension, coordinates);
-  }, [coordinates, dimension]);
+  }, []);
   useEffect(() => {
     rendererRef.current?.setBoxMode(boxMode);
   }, [boxMode]);
   useEffect(() => {
-    if (dimension !== '3d' || coordinates) return;
+    if (positionSource !== 'titles' || dimension !== '3d' || titleCoordinates)
+      return;
     const controller = new AbortController();
     fetch(new URL('data/projection-3d.json', document.baseURI), {
       signal: controller.signal,
@@ -248,13 +261,13 @@ export function PaperMap({
         )
           throw new Error('3D coordinates do not match the catalogue.');
         if (!controller.signal.aborted)
-          setCoordinates(normalise3D(payload.coordinates));
+          setTitleCoordinates(normalise3D(payload.coordinates));
       })
       .catch((error) => {
         if (!controller.signal.aborted) setProjectionError(error.message);
       });
     return () => controller.abort();
-  }, [attempt, coordinates, data.points, dimension]);
+  }, [attempt, titleCoordinates, data.points, dimension, positionSource]);
   if (rendererError) throw rendererError;
   const navigate = (action: string) => {
     if (action === 'Zoom in') rendererRef.current?.zoom(1.25);
@@ -266,6 +279,7 @@ export function PaperMap({
     <div className="relative h-full min-h-[360px] w-full overflow-hidden bg-[var(--map-background)]">
       <canvas
         ref={canvasRef}
+        data-position-source={positionSource}
         tabIndex={0}
         aria-label={`${dimension === '3d' && coordinates ? '3D' : '2D'} semantic map of ${data.cohort.n.toLocaleString()} papers`}
         aria-describedby="map-keyboard-help"
@@ -335,7 +349,7 @@ export function PaperMap({
           className="rounded-none border-l border-white/20 text-white hover:bg-white/10 hover:text-white disabled:text-white/40"
           aria-label="Deselect papers"
           aria-keyshortcuts="Escape"
-          disabled={!group && !selected}
+          disabled={!hasSelection}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               setBoxMode(false);

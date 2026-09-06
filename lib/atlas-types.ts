@@ -49,6 +49,7 @@ export type MapData = {
     };
   };
   geometry: {
+    opening_zoom?: number;
     embedding: string;
     projection: string;
     parameters: Record<string, string | number>;

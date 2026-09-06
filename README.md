@@ -4,7 +4,7 @@ An interactive research atlas for exploring the complete AI ethics literature ca
 
 **Live atlas:** [GitHub Pages](https://davidfreeborn.github.io/jstor-ai-ethics-atlas/) · [Sites release](https://jstor-ai-ethics-atlas.dafidius.chatgpt.site)
 
-The public interface has a paper atlas and a correlation-matrix workspace. All 7,076 records have title-based SPECTER/UMAP positions in independently fitted 2D and 3D projections. Positions remain fixed across lenses within each dimension:
+The public interface has a paper atlas and a correlation-matrix workspace. **Positions** switches between 7,076 title-based SPECTER records and 2,057 abstract-based S-SciBERT records. Both have independently fitted 2D and 3D UMAP projections. Positions remain fixed across lenses within each representation and dimension:
 
 - **Topic models** — 26-topic BERTopic, the fixed 9-topic reduction, and 37-topic LDA.
 - **Neighbourhood agreement** — local BERTopic–LDA agreement within abstract-semantic neighbourhoods.
@@ -25,9 +25,13 @@ Publisher, creator and keyphrase fields are direct paper-level catalogue metadat
 
 The opening view centres on the main body of papers. Reset returns there; Fit all includes every outlier. In 3D, drag to rotate and Shift-drag (or two fingers) to pan. The wheel and +/− controls zoom. Keyboard: arrows navigate, Shift-arrows pan in 3D, Home resets, Shift-Home fits all.
 
+Changing Positions retains selections and restores each map's camera. Papers without abstract embeddings are omitted from the abstract map, not assigned estimated positions. Lens counts, facet frequencies, search and shared-author reach use the active map; selections spanning both cohorts show how many selected papers are mapped. Correlation matrices retain their independently defined catalogue-based denominators.
+
 Select a topic, click a keyword/publication name, or use Select area. The same paper IDs remain highlighted when changing lenses or dimensions. Use **× Deselect** in the bottom-left toolbar, the × beside the selection, or Escape on the map to clear the selection and paper details without changing the lens, palette or camera. Facet checkboxes control the palette; “Select papers in coloured values” selects their union. Clicking a paper under a publication, keyword or authorship lens selects its metadata neighbours. Hollow selected marks lack the current lens data.
 
 The 3D projection uses the original 768-dimensional title embeddings, not artificial depth. Its source hashes, parameters and three-seed quality audit are recorded in [`docs/PROJECTION_3D_AUDIT.json`](docs/PROJECTION_3D_AUDIT.json). Projection distances and apparent boundaries are approximate; 2D and 3D are distinct exploratory layouts, not additional model assignments.
+
+Abstract positions use the frozen S-SciBERT embeddings supplied to BERTopic, not the shortened preview text. Regenerate with `scripts/build_abstract_positions.py`; source hashes and three-seed 2D/3D audits are in [`docs/ABSTRACT_POSITIONS_AUDIT.json`](docs/ABSTRACT_POSITIONS_AUDIT.json). No topic labels enter the projection. Switching positions changes the text source, encoder and cohort; it is not an isolated experiment on text length. Upstream encoder token limits still apply.
 
 Pairwise association is reported as bias-corrected Cramér's V. Detailed cells are Pearson residuals computed from full contingency-table margins. Keyword memberships are exploded as multi-response observations and are descriptive rather than inferential.
 

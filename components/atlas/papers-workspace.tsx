@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 
 import { PaperMap } from '@/components/atlas/paper-map';
@@ -31,6 +31,12 @@ import type {
 } from '@/lib/atlas-types';
 import { decodeHtmlEntities } from '@/lib/display-text';
 import { facetGroup, topicGroup, type PaperGroup } from '@/lib/paper-selection';
+import {
+  abstractMap,
+  validateAbstractPositions,
+  type AbstractPositions,
+  type PositionSource,
+} from '@/lib/paper-positions';
 
 export type RelationState = { all: Set<string>; shared: Map<string, string[]> };
 export type FacetSelections = Record<
@@ -188,6 +194,12 @@ function FacetControls({
 
 function LensControls({
   data,
+  positions,
+  catalogueCount,
+  abstractCount,
+  onPositions,
+  positionError,
+  onRetryPositions,
   lens,
   topicFilter,
   selections,
@@ -199,6 +211,12 @@ function LensControls({
   onFacetGroup,
 }: {
   data: MapData;
+  positions: PositionSource;
+  catalogueCount: number;
+  abstractCount: number;
+  onPositions: (source: PositionSource) => void;
+  positionError: string;
+  onRetryPositions: () => void;
   lens: PaperLens;
   topicFilter: number | null;
   selections: FacetSelections;
@@ -224,6 +242,34 @@ function LensControls({
       : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-border px-4 py-3">
+        <label className="grid gap-2">
+          <span className="data-kicker">Positions</span>
+          <select
+            aria-label="Positions"
+            value={positions}
+            onChange={(event) =>
+              onPositions(event.target.value as PositionSource)
+            }
+            className="h-9 w-full min-w-0 rounded-none border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="titles">
+              Titles ({catalogueCount.toLocaleString()} papers)
+            </option>
+            <option value="abstracts">
+              Abstracts ({abstractCount.toLocaleString()} papers)
+            </option>
+          </select>
+        </label>
+        {positionError ? (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {positionError}{' '}
+            <button className="underline" onClick={onRetryPositions}>
+              Retry abstracts
+            </button>
+          </p>
+        ) : null}
+      </div>
       <div className="border-b border-border px-4 py-3">
         <p className="data-kicker">Lens</p>
         <div className="mt-2 space-y-0.5">
@@ -377,7 +423,54 @@ function buildRelation(
   return { all: new Set(shared.keys()), shared };
 }
 
-function LoadedPapersWorkspace({ data }: { data: MapData }) {
+function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
+  const [positions, setPositions] = useState<PositionSource>('titles');
+  const [abstractPositions, setAbstractPositions] =
+    useState<AbstractPositions | null>(null);
+  const [positionError, setPositionError] = useState('');
+  const [positionAttempt, setPositionAttempt] = useState(0);
+  const abstractData = useMemo(
+    () =>
+      abstractPositions ? abstractMap(catalogue, abstractPositions) : null,
+    [catalogue, abstractPositions],
+  );
+  const data =
+    positions === 'abstracts' && abstractData ? abstractData : catalogue;
+  const activePositions = data === catalogue ? 'titles' : 'abstracts';
+  useEffect(() => {
+    if (positions !== 'abstracts' || abstractPositions) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      setPositionError('Abstract positions took too long to load.');
+      setPositions('titles');
+    }, 15000);
+    fetch(new URL('data/positions-abstracts.json', document.baseURI), {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load abstract positions.');
+        return validateAbstractPositions(await response.json(), catalogue);
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setAbstractPositions(payload);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setPositionError(
+            error instanceof Error
+              ? error.message
+              : 'Could not load abstract positions.',
+          );
+          setPositions('titles');
+        }
+      })
+      .finally(() => clearTimeout(timeout));
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [abstractPositions, catalogue, positionAttempt, positions]);
   const defaults = useMemo<FacetSelections>(
     () => ({
       publisher: data.facets.publishers.slice(0, 10).map((item) => item.value),
@@ -530,9 +623,27 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
     setGroup(null);
     setSelectedId(null);
   };
+  const mappedSelectionCount = useMemo(
+    () =>
+      group ? data.points.filter((paper) => group.ids.has(paper.id)).length : 0,
+    [data.points, group],
+  );
   const controls = (
     <LensControls
       data={data}
+      positions={positions}
+      catalogueCount={catalogue.cohort.n}
+      abstractCount={catalogue.cohort.coverage.bertopic}
+      onPositions={(source) => {
+        setPositionError('');
+        setPositions(source);
+      }}
+      positionError={positionError}
+      onRetryPositions={() => {
+        setPositionError('');
+        setPositionAttempt((attempt) => attempt + 1);
+        setPositions('abstracts');
+      }}
       lens={lens}
       topicFilter={topicFilter}
       selections={selections}
@@ -582,6 +693,9 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
       >
         <PaperMap
           data={data}
+          positionSource={activePositions}
+          abstractCoordinates={abstractPositions?.coordinates3d ?? null}
+          hasSelection={!!group || !!selectedId}
           lens={lens}
           selected={selected}
           onSelect={selectPaper}
@@ -591,6 +705,11 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
           selections={selections}
           colourSlots={colourSlots}
         />
+        {positions === 'abstracts' && !abstractData ? (
+          <output className="absolute inset-0 z-40 grid place-items-center bg-[var(--map-background)] text-sm text-white">
+            Loading abstract positions…
+          </output>
+        ) : null}
         {group ? (
           <output
             className="absolute left-4 top-16 z-10 flex max-w-[min(380px,calc(100%-32px))] items-start gap-3 border border-white/20 bg-[#11151a] px-3 py-2 text-sm text-white"
@@ -602,6 +721,12 @@ function LoadedPapersWorkspace({ data }: { data: MapData }) {
                   {group.ids.size.toLocaleString()}
                 </span>{' '}
                 selected
+                {group.ids.size > mappedSelectionCount ? (
+                  <span className="text-white/65">
+                    {' '}
+                    · {mappedSelectionCount.toLocaleString()} mapped
+                  </span>
+                ) : null}
               </p>
               <p className="truncate text-xs text-white/65" title={group.label}>
                 {group.label}

@@ -104,6 +104,110 @@ try {
   assert.equal(report.scale.tab.size, '14px');
   assert.equal(report.scale.sidebar.width, 296);
   await page.screenshot({ path: `${output}/new-default.png` });
+  // Position source is independent of colour, dimensions and persistent ID selection.
+  const positionPicker = page.getByRole('combobox', {
+    name: 'Positions',
+    exact: true,
+  });
+  assert.deepEqual(await positionPicker.locator('option').allTextContents(), [
+    'Titles (7,076 papers)',
+    'Abstracts (2,057 papers)',
+  ]);
+  const switchPositions = async (source) => {
+    await positionPicker.selectOption(source);
+    await page.waitForFunction((source) => {
+      const c = document.querySelector('canvas');
+      return (
+        c?.dataset.positionSource === source &&
+        JSON.parse(c.dataset.renderer || '{}').positionSource === source
+      );
+    }, source);
+    await tick();
+  };
+  await switchPositions('abstracts');
+  assert.equal((await stats()).papers, 2057);
+  assert.match(
+    await page.getByRole('button', { name: /^LDA — 37 topics/ }).innerText(),
+    /2,051/,
+  );
+  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  const positionTopic = [...data.topics.bertopic]
+    .filter((t) => t.id >= 0)
+    .sort((a, b) => b.count - a.count)[0];
+  await page
+    .getByRole('button')
+    .filter({ hasText: positionTopic.label })
+    .click();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await tick();
+  const abstract2d = await stats();
+  await page.screenshot({ path: `${output}/abstract-2d.png` });
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await tick();
+  const abstract3d = await stats();
+  await page.screenshot({ path: `${output}/abstract-3d.png` });
+  await switchPositions('titles');
+  await page.waitForFunction(() =>
+    document
+      .querySelector('canvas')
+      ?.getAttribute('aria-label')
+      ?.startsWith('3D'),
+  );
+  await switchPositions('abstracts');
+  assert.deepEqual((await stats()).camera, abstract3d.camera);
+  assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await tick();
+  assert.deepEqual((await stats()).camera, abstract2d.camera);
+  for (let i = 0; i < 12; i++)
+    await switchPositions(i % 2 ? 'abstracts' : 'titles');
+  await switchPositions('titles');
+  assert.deepEqual((await stats()).camera, start.camera);
+  assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await page.getByRole('button', { name: /^Keywords/ }).click();
+  const crossCohortKeyword = data.facets.keywords[0].value;
+  await page
+    .getByRole('button', {
+      name: `Select ${crossCohortKeyword} papers`,
+      exact: true,
+    })
+    .click();
+  await tick();
+  const crossCohortSelection = await stats();
+  await switchPositions('abstracts');
+  const abstractIds = new Set(
+    JSON.parse(await readFile('public/data/positions-abstracts.json', 'utf8'))
+      .ids,
+  );
+  const mappedSelected = data.points.filter(
+    (p) => abstractIds.has(p.id) && p.keywords.includes(crossCohortKeyword),
+  ).length;
+  assert.match(
+    await page.getByLabel('Persistent paper selection').innerText(),
+    new RegExp(`${mappedSelected} mapped`),
+  );
+  assert.equal(
+    (await stats()).selectionHash,
+    crossCohortSelection.selectionHash,
+  );
+  // Cancel a live pointer gesture when its coordinate space changes.
+  const sourceBounds = await canvas.boundingBox();
+  await page.mouse.move(sourceBounds.x + 250, sourceBounds.y + 250);
+  await page.mouse.down();
+  await switchPositions('titles');
+  await page.mouse.up();
+  assert.equal(
+    (await stats()).selectionHash,
+    crossCohortSelection.selectionHash,
+  );
+  assert.equal((await stats()).pointers, 0);
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await page.getByRole('button', { name: /^All papers/ }).click();
+  report.checks.push(
+    'Title/abstract positions: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
+  );
   // Same-task moves followed by pointer-up reproduced the null-reference failure on BOTH old live hosts.
   let bounds = await canvas.boundingBox();
   for (let round = 0; round < 40; round++) {
@@ -516,6 +620,29 @@ try {
       ?.startsWith('3D'),
   );
   report.checks.push('Invalid 3D asset stays isolated; retry recovers');
+  await page.route('**/positions-abstracts.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{"version":1,"ids":[]}',
+    }),
+  );
+  await positionPicker.selectOption('abstracts');
+  await page
+    .getByText('Abstract positions do not match the released papers.')
+    .waitFor();
+  assert.equal(await positionPicker.inputValue(), 'titles');
+  assert.equal(await canvas.getAttribute('data-position-source'), 'titles');
+  await page.unroute('**/positions-abstracts.json');
+  await page.getByRole('button', { name: 'Retry abstracts' }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('canvas')?.dataset.positionSource === 'abstracts',
+  );
+  await positionPicker.selectOption('titles');
+  report.checks.push(
+    'Invalid abstract positions retain a working title map; retry restores 2,057 aligned papers',
+  );
   // Repeated unmounts must not leak document listeners, canvases, or retained atlas heaps.
   const cdp =
     process.env.ATLAS_BROWSER === 'firefox'
@@ -593,6 +720,14 @@ try {
         1.25 ** 5.5,
     );
     await mobile.getByRole('button', { name: 'Lens', exact: true }).click();
+    await mobile
+      .getByRole('combobox', { name: 'Positions', exact: true })
+      .selectOption('abstracts');
+    await mobile.waitForFunction(
+      () =>
+        document.querySelector('canvas')?.dataset.positionSource ===
+        'abstracts',
+    );
     await mobile.getByRole('button', { name: /^Keywords/ }).click();
     await mobile
       .getByRole('button', {

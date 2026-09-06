@@ -18,7 +18,7 @@ export const quantile = (values: number[], q: number) => {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) * q)] ?? 0;
 };
-export function openingCamera(points: XY[]): Camera2D {
+export function openingCamera(points: XY[], zoom = OPENING_ZOOM): Camera2D {
   return {
     x: quantile(
       points.map((p) => p.x),
@@ -28,7 +28,7 @@ export function openingCamera(points: XY[]): Camera2D {
       points.map((p) => p.y),
       0.5,
     ),
-    zoom: OPENING_ZOOM,
+    zoom,
   };
 }
 export function scale2D(bounds: Bounds2D, size: Viewport) {
