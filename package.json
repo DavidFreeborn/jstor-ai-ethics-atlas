@@ -13,6 +13,8 @@
     "lint": "oxlint app components/atlas lib",
     "test:network": "node scripts/test_network_analysis.mjs",
     "test:association": "node scripts/test_association_analysis.mjs",
+    "test:map": "node --experimental-strip-types scripts/test_map_interaction.ts",
+    "test:browser": "node scripts/test_atlas_browser.mjs",
     "test:worker": "node scripts/test_worker_runtime.mjs",
     "format": "oxfmt"
   },
@@ -50,6 +52,7 @@
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
+    "playwright": "1.62.1",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "^8.2.2",

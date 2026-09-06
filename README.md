@@ -4,7 +4,7 @@ An interactive research atlas for exploring the complete AI ethics literature ca
 
 **Live atlas:** [GitHub Pages](https://davidfreeborn.github.io/jstor-ai-ethics-atlas/) · [Sites release](https://jstor-ai-ethics-atlas.dafidius.chatgpt.site)
 
-The public interface has a paper atlas and a correlation-matrix workspace. Every map lens uses one fixed, title-based SPECTER/UMAP geometry for all 7,076 records:
+The public interface has a paper atlas and a correlation-matrix workspace. All 7,076 records have title-based SPECTER/UMAP positions in independently fitted 2D and 3D projections. Positions remain fixed across lenses within each dimension:
 
 - **Topic models** — 26-topic BERTopic, the fixed 9-topic reduction, and 37-topic LDA.
 - **Neighbourhood agreement** — local BERTopic–LDA agreement within abstract-semantic neighbourhoods.
@@ -19,7 +19,15 @@ The method-comparison and aggregate network workspaces remain in the source tree
 
 Every lens carries its own denominator. The catalogue has 7,076 records; BERTopic covers 2,057 abstracts; the released 37-topic LDA covers 2,052 abstracts; journal metadata covers 3,784 records; the controlled keyword vocabulary covers 6,023; creator metadata covers 5,265. Missing values are never imputed.
 
-Map position is held constant across lenses. Publisher, creator and keyphrase fields are direct paper-level catalogue metadata. Of the journal values, 2,015 are direct canonical-ID joins and 1,769 are propagated through an unambiguous exact JSTOR journal identifier; two ambiguous identifiers are excluded. Selection rings mark exact shared metadata; relation edges are not drawn.
+Publisher, creator and keyphrase fields are direct paper-level catalogue metadata. Of the journal values, 2,015 are direct canonical-ID joins and 1,769 are propagated through an unambiguous exact JSTOR journal identifier; two ambiguous identifiers are excluded. Shared-author links use exact names, not disambiguated people. Relation edges are not drawn.
+
+## Exploring the map
+
+The opening view centres on the main body of papers. Reset returns there; Fit all includes every outlier. In 3D, drag to rotate and Shift-drag (or two fingers) to pan. The wheel and +/− controls zoom. Keyboard: arrows navigate, Shift-arrows pan in 3D, Home resets, Shift-Home fits all.
+
+Select a topic, click a keyword/publication name, or use Select area. The same paper IDs remain highlighted when changing lenses or dimensions; the × beside the selection clears it. Facet checkboxes control the palette; “Select papers in coloured values” selects their union. Clicking a paper under a publication, keyword or authorship lens selects its metadata neighbours. Hollow selected marks lack the current lens data.
+
+The 3D projection uses the original 768-dimensional title embeddings, not artificial depth. Its source hashes, parameters and three-seed quality audit are recorded in [`docs/PROJECTION_3D_AUDIT.json`](docs/PROJECTION_3D_AUDIT.json). Projection distances and apparent boundaries are approximate; 2D and 3D are distinct exploratory layouts, not additional model assignments.
 
 Pairwise association is reported as bias-corrected Cramér's V. Detailed cells are Pearson residuals computed from full contingency-table margins. Keyword memberships are exploded as multi-response observations and are descriptive rather than inferential.
 
@@ -37,8 +45,12 @@ npm run lint
 npx tsc --noEmit
 npm run test:network
 npm run test:association
+npm run test:map
 npm run build
+npm run test:worker
 npm run build:pages
+npx playwright install chromium
+npm run test:browser
 python scripts/validate_release.py
 python scripts/audit_palette.py
 ```
@@ -48,8 +60,11 @@ The browser-ready research release is in `public/data`. Local source inputs are 
 ```bash
 python scripts/build_atlas_data.py
 python scripts/audit_projection.py
+python scripts/build_3d_projection.py
 python scripts/audit_palette.py
 python scripts/validate_release.py
 ```
 
 The focused full-catalogue revision is documented in [`docs/PAPERS_ATLAS_IMPLEMENTATION_PLAN.md`](docs/PAPERS_ATLAS_IMPLEMENTATION_PLAN.md).
+
+The interaction/3D revision has a [plan](docs/INTERACTION_3D_IMPLEMENTATION_PLAN.md) and [verification record](docs/INTERACTION_3D_AUDIT.md). Both hosts bundle identical font binaries; licences are in `public/licenses`. Browser tests can target a running build with `ATLAS_URL`, use Firefox with `ATLAS_BROWSER=firefox`, and store evidence in `work/audit`. The default test command starts and stops its own production preview.

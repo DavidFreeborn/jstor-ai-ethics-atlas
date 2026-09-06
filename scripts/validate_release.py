@@ -34,6 +34,14 @@ def main() -> None:
     assert atlas["cohort"]["catalogue_n"] == 7076
     assert len({paper["id"] for paper in points}) == len(points)
     assert all(math.isfinite(paper[axis]) for paper in points for axis in ("x", "y"))
+    projection_3d = load("projection-3d.json")
+    projection_audit = json.loads((ROOT / "docs" / "PROJECTION_3D_AUDIT.json").read_text(encoding="utf-8"))
+    assert projection_3d["ids"] == [paper["id"] for paper in points]
+    assert len(projection_3d["coordinates"]) == len(points)
+    assert all(len(point) == 3 and all(math.isfinite(value) for value in point) for point in projection_3d["coordinates"])
+    assert sha256(PUBLIC / "projection-3d.json") == projection_audit["output_sha256"]
+    assert projection_3d["parameters"] == projection_audit["parameters"]
+    assert all(0.85 <= run["trustworthiness_15"] <= 1 for run in projection_audit["runs"])
     coverage = atlas["cohort"]["coverage"]
     assert coverage == {
         "bertopic": 2057,
@@ -118,7 +126,7 @@ def main() -> None:
         assert derived[name]["sha256"] == sha256(path)
     print(json.dumps({
         "status": "pass",
-        "checks": 51,
+        "checks": 57,
         "papers": len(points),
         "method_comparison": methods["cross_method"]["n"],
         "paired": methods["paired"]["eligible_n"],

@@ -1,0 +1,41 @@
+{
+  "papers": 7076,
+  "dimensions": 3,
+  "source_sha256": "49f3a986d89f37f3174d4bd9d9711bcba812ce2858876b805d5a310a4b54cc7f",
+  "index_sha256": "a69ed47eb3f7389172f0d0b681ae4a3212c7b69efd9ed735beddc8c88c10068a",
+  "output_sha256": "729767c6d9b015e3c60fe6849da742ad96ff9de8a68e356168f70281938ee40c",
+  "numpy": "2.4.2",
+  "sklearn": "1.8.0",
+  "umap": "0.5.11",
+  "parameters": {
+    "n_components": 3,
+    "n_neighbors": 30,
+    "min_dist": 0.08,
+    "metric": "cosine",
+    "n_jobs": 1,
+    "random_state": 42
+  },
+  "runs": [
+    {
+      "seed": 42,
+      "trustworthiness_15": 0.91418,
+      "neighbour_recall_15": 0.248153,
+      "neighbour_recall_30": 0.267915,
+      "seed_neighbour_overlap_15": 1.0
+    },
+    {
+      "seed": 43,
+      "trustworthiness_15": 0.914892,
+      "neighbour_recall_15": 0.248276,
+      "neighbour_recall_30": 0.267849,
+      "seed_neighbour_overlap_15": 0.480149
+    },
+    {
+      "seed": 44,
+      "trustworthiness_15": 0.915263,
+      "neighbour_recall_15": 0.251281,
+      "neighbour_recall_30": 0.269149,
+      "seed_neighbour_overlap_15": 0.52802
+    }
+  ]
+}

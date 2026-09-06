@@ -1,121 +1,371 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LocateFixed, Minus, Plus } from 'lucide-react';
-
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { LocateFixed, Maximize, Minus, Plus, Scan } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { ColourSlots, FacetSelections, RelationState } from '@/components/atlas/papers-workspace';
-import { AGREEMENT_STOPS, CATEGORY_COLOURS, OTHER_COLOUR } from '@/lib/atlas-visual';
-import type { MapData, PaperLens, PaperPoint, TopicSummary } from '@/lib/atlas-types';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import type { ColourSlots, FacetSelections } from './papers-workspace';
+import {
+  AGREEMENT_STOPS,
+  CATEGORY_COLOURS,
+  OTHER_COLOUR,
+} from '@/lib/atlas-visual';
+import type { MapData, PaperLens, PaperPoint } from '@/lib/atlas-types';
 import { decodeHtmlEntities } from '@/lib/display-text';
+import { normalise3D, type Vec3 } from '@/lib/map-camera';
+import {
+  PaperRenderer,
+  type HoverPoint,
+  type PaperMark,
+} from '@/lib/paper-renderer';
+import type { PaperGroup } from '@/lib/paper-selection';
 
-type Transform = { scale: number; tx: number; ty: number };
-type ScreenPoint = { paper: PaperPoint; x: number; y: number };
-type MarkState = 'active' | 'filtered' | 'missing';
-type Mark = { colours: string[]; state: MarkState };
-
-const PICK_CELL = 24;
-const FILTERED_COLOUR = '#52606B';
-const MISSING_COLOUR = '#242D35';
-
-function parseHex(hex: string) { return [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16)); }
-function rgba(hex: string, alpha: number) { const [r, g, b] = parseHex(hex); return `rgba(${r},${g},${b},${alpha})`; }
+const parseHex = (hex: string) =>
+  [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16));
 function interpolateStops(value: number, stops: readonly string[]) {
-  const bounded = Math.max(0, Math.min(1, value));
-  const position = bounded * (stops.length - 1);
-  const index = Math.min(stops.length - 2, Math.floor(position));
-  const fraction = position - index;
-  const left = parseHex(stops[index]); const right = parseHex(stops[index + 1]);
-  return `rgb(${left.map((channel, i) => Math.round(channel + (right[i] - channel) * fraction)).join(',')})`;
+  const position = Math.max(0, Math.min(1, value)) * (stops.length - 1),
+    index = Math.min(stops.length - 2, Math.floor(position)),
+    fraction = position - index;
+  const left = parseHex(stops[index]),
+    right = parseHex(stops[index + 1]);
+  return `rgb(${left.map((c, i) => Math.round(c + (right[i] - c) * fraction)).join(',')})`;
 }
 
-function drawMark(context: CanvasRenderingContext2D, x: number, y: number, radius: number, colours: string[], alpha: number) {
-  if (colours.length === 1) { context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fillStyle = colours[0].startsWith('#') ? rgba(colours[0], alpha) : colours[0]; context.globalAlpha = colours[0].startsWith('#') ? 1 : alpha; context.fill(); context.globalAlpha = 1; return; }
-  const step = Math.PI * 2 / colours.length;
-  colours.forEach((colour, index) => { context.beginPath(); context.moveTo(x, y); context.arc(x, y, radius, -Math.PI / 2 + step * index, -Math.PI / 2 + step * (index + 1)); context.closePath(); context.fillStyle = rgba(colour, alpha); context.fill(); });
-}
-
-function drawNeutralMark(context: CanvasRenderingContext2D, x: number, y: number, radius: number, state: Exclude<MarkState, 'active'>) {
-  context.beginPath();
-  context.arc(x, y, state === 'filtered' ? Math.max(1.25, radius * 0.78) : Math.max(1.05, radius * 0.64), 0, Math.PI * 2);
-  context.fillStyle = state === 'filtered' ? FILTERED_COLOUR : MISSING_COLOUR;
-  context.fill();
-}
-
-function topicValue(paper: PaperPoint, lens: PaperLens) { if (lens === 'bertopic') return paper.bertopic; if (lens === 'bertopic_reduced') return paper.bertopic_reduced; return paper.lda_topic; }
-
-export function PaperMap({ data, lens, selected, onSelect, topicFilter, selections, colourSlots, relation }: {
-  data: MapData; lens: PaperLens; selected: PaperPoint | null; onSelect: (paper: PaperPoint | null) => void;
-  topicFilter: number | null; selections: FacetSelections; colourSlots: ColourSlots; relation: RelationState;
+export function PaperMap({
+  data,
+  lens,
+  selected,
+  onSelect,
+  group,
+  onGroup,
+  selections,
+  colourSlots,
+}: {
+  data: MapData;
+  lens: PaperLens;
+  selected: PaperPoint | null;
+  onSelect: (paper: PaperPoint | null) => void;
+  group: PaperGroup | null;
+  onGroup: (group: PaperGroup) => void;
+  selections: FacetSelections;
+  colourSlots: ColourSlots;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null); const hostRef = useRef<HTMLDivElement>(null); const dragRef = useRef<{ x: number; y: number; tx: number; ty: number; moved: boolean } | null>(null);
-  const [size, setSize] = useState({ width: 800, height: 600 }); const [transform, setTransform] = useState<Transform>({ scale: 1, tx: 0, ty: 0 }); const [hovered, setHovered] = useState<ScreenPoint | null>(null);
-  const topics: TopicSummary[] = lens === 'bertopic_reduced' ? data.topics.bertopic_reduced : lens === 'lda' ? data.topics.lda : data.topics.bertopic;
-  const topicColours = useMemo(() => new Map(topics.map((topic) => [topic.id, topic.colour])), [topics]);
-  const selectedValues = useMemo(() => ({ publisher: new Set(selections.publisher), journal: new Set(selections.journal), keywords: new Set(selections.keywords) }), [selections]);
-  const maxCoauthor = useMemo(() => Math.max(1, ...data.points.map((paper) => paper.coauthor_count)), [data.points]);
+  const canvasRef = useRef<HTMLCanvasElement>(null),
+    rendererRef = useRef<PaperRenderer | null>(null);
+  const [dimension, setDimension] = useState<'2d' | '3d'>('2d'),
+    [coordinates, setCoordinates] = useState<Vec3[] | null>(null);
+  const [projectionError, setProjectionError] = useState(''),
+    [attempt, setAttempt] = useState(0),
+    [boxMode, setBoxMode] = useState(false);
+  const [hovered, setHovered] = useState<HoverPoint | null>(null),
+    [rendererError, setRendererError] = useState<Error | null>(null);
+  const topics =
+    lens === 'bertopic_reduced'
+      ? data.topics.bertopic_reduced
+      : lens === 'lda'
+        ? data.topics.lda
+        : data.topics.bertopic;
+  const topicColours = useMemo(
+    () => new Map(topics.map((t) => [t.id, t.colour])),
+    [topics],
+  );
+  const selectedValues = useMemo(
+    () => ({
+      publisher: new Set(selections.publisher),
+      journal: new Set(selections.journal),
+      keywords: new Set(selections.keywords),
+    }),
+    [selections],
+  );
+  const maxCoauthor = useMemo(
+    () => Math.max(1, ...data.points.map((p) => p.coauthor_count)),
+    [data.points],
+  );
   const agreementScale = useMemo(() => {
-    const values = data.points.map((paper) => paper.neighbour_agreement).filter((value): value is number => value !== null).sort((a, b) => a - b);
-    const ranks = new Map<number, number>();
+    const values = data.points
+        .map((p) => p.neighbour_agreement)
+        .filter((v): v is number => v !== null)
+        .sort((a, b) => a - b),
+      ranks = new Map<number, number>();
     for (let start = 0; start < values.length;) {
       let end = start;
-      while (end + 1 < values.length && values[end + 1] === values[start]) end += 1;
-      ranks.set(values[start], values.length > 1 ? ((start + end) / 2) / (values.length - 1) : 0.5);
+      while (end + 1 < values.length && values[end + 1] === values[start])
+        end++;
+      ranks.set(
+        values[start],
+        values.length > 1 ? (start + end) / 2 / (values.length - 1) : 0.5,
+      );
       start = end + 1;
     }
     return ranks;
   }, [data.points]);
-
-  const markFor = useCallback((paper: PaperPoint): Mark => {
-    if (lens === 'catalogue') return { colours: ['#DDF6FF'], state: 'active' };
-    if (lens === 'bertopic' || lens === 'bertopic_reduced' || lens === 'lda') {
-      const value = topicValue(paper, lens);
-      if (value === undefined) return { colours: [], state: 'missing' };
-      if (topicFilter !== null && value !== topicFilter) return { colours: [], state: 'filtered' };
-      return { colours: [topicColours.get(value) ?? '#D8DEE9'], state: 'active' };
-    }
-    if (lens === 'agreement') return paper.neighbour_agreement === null ? { colours: [], state: 'missing' } : { colours: [interpolateStops(agreementScale.get(paper.neighbour_agreement) ?? 0, AGREEMENT_STOPS)], state: 'active' };
-    if (lens === 'publisher') { if (!paper.publisher) return { colours: [], state: 'missing' }; const selectedValue = selectedValues.publisher.has(paper.publisher); return { colours: [selectedValue ? CATEGORY_COLOURS[colourSlots.publisher.get(paper.publisher) ?? 0] : OTHER_COLOUR], state: 'active' }; }
-    if (lens === 'journal') { if (!paper.journal) return { colours: [], state: 'missing' }; const selectedValue = selectedValues.journal.has(paper.journal); return { colours: [selectedValue ? CATEGORY_COLOURS[colourSlots.journal.get(paper.journal) ?? 0] : OTHER_COLOUR], state: 'active' }; }
-    if (lens === 'keywords') { if (!paper.keywords.length) return { colours: [], state: 'missing' }; const matches = paper.keywords.filter((value) => selectedValues.keywords.has(value)); return { colours: matches.length ? matches.map((value) => CATEGORY_COLOURS[colourSlots.keywords.get(value) ?? 0]) : [OTHER_COLOUR], state: 'active' }; }
-    if (!paper.authors.length) return { colours: [], state: 'missing' };
-    const value = Math.log1p(paper.coauthor_count) / Math.log1p(maxCoauthor);
-    return { colours: [interpolateStops(value, ['#274060', '#00A9B7', '#FFE34D'])], state: 'active' };
-  }, [agreementScale, colourSlots, lens, maxCoauthor, selectedValues, topicColours, topicFilter]);
-
-  useEffect(() => { if (!hostRef.current) return; const observer = new ResizeObserver(([entry]) => setSize({ width: Math.max(320, Math.floor(entry.contentRect.width)), height: Math.max(360, Math.floor(entry.contentRect.height)) })); observer.observe(hostRef.current); return () => observer.disconnect(); }, []);
-  const project = useCallback((paper: PaperPoint) => { const padding = 30; const [minX, maxX] = data.geometry.bounds.x; const [minY, maxY] = data.geometry.bounds.y; const baseX = padding + ((paper.x - minX) / (maxX - minX)) * (size.width - padding * 2); const baseY = padding + (1 - (paper.y - minY) / (maxY - minY)) * (size.height - padding * 2); return { x: (baseX - size.width / 2) * transform.scale + size.width / 2 + transform.tx, y: (baseY - size.height / 2) * transform.scale + size.height / 2 + transform.ty }; }, [data.geometry.bounds, size, transform]);
-  const screenPoints = useMemo<ScreenPoint[]>(() => data.points.map((paper) => ({ paper, ...project(paper) })), [data.points, project]);
-  const pointById = useMemo(() => new Map(screenPoints.map((point) => [point.paper.id, point])), [screenPoints]);
-  const pickGrid = useMemo(() => { const grid = new Map<string, ScreenPoint[]>(); for (const point of screenPoints) { const key = `${Math.floor(point.x / PICK_CELL)}:${Math.floor(point.y / PICK_CELL)}`; const bucket = grid.get(key); if (bucket) bucket.push(point); else grid.set(key, [point]); } return grid; }, [screenPoints]);
-
+  // Encodings change with lenses, not camera movement. Multi-keyword glyphs preserve every selected membership.
+  const marks = useMemo<PaperMark[]>(
+    () =>
+      data.points.map((paper) => {
+        if (lens === 'catalogue') return { colours: ['#ddf6ff'] };
+        if (
+          lens === 'bertopic' ||
+          lens === 'bertopic_reduced' ||
+          lens === 'lda'
+        ) {
+          const value =
+            lens === 'bertopic'
+              ? paper.bertopic
+              : lens === 'bertopic_reduced'
+                ? paper.bertopic_reduced
+                : paper.lda_topic;
+          return value === undefined
+            ? { colours: [], missing: true }
+            : { colours: [topicColours.get(value) ?? '#d8dee9'] };
+        }
+        if (lens === 'agreement')
+          return paper.neighbour_agreement === null
+            ? { colours: [], missing: true }
+            : {
+                colours: [
+                  interpolateStops(
+                    agreementScale.get(paper.neighbour_agreement) ?? 0,
+                    AGREEMENT_STOPS,
+                  ),
+                ],
+              };
+        if (lens === 'publisher' || lens === 'journal') {
+          const value = paper[lens];
+          return !value
+            ? { colours: [], missing: true }
+            : {
+                colours: [
+                  selectedValues[lens].has(value)
+                    ? CATEGORY_COLOURS[colourSlots[lens].get(value) ?? 0]
+                    : OTHER_COLOUR,
+                ],
+              };
+        }
+        if (lens === 'keywords') {
+          if (!paper.keywords.length) return { colours: [], missing: true };
+          const matches = paper.keywords.filter((k) =>
+            selectedValues.keywords.has(k),
+          );
+          return {
+            colours: matches.length
+              ? matches.map(
+                  (k) => CATEGORY_COLOURS[colourSlots.keywords.get(k) ?? 0],
+                )
+              : [OTHER_COLOUR],
+          };
+        }
+        return !paper.authors.length
+          ? { colours: [], missing: true }
+          : {
+              colours: [
+                interpolateStops(
+                  Math.log1p(paper.coauthor_count) / Math.log1p(maxCoauthor),
+                  ['#274060', '#00a9b7', '#ffe34d'],
+                ),
+              ],
+            };
+      }),
+    [
+      agreementScale,
+      colourSlots,
+      data.points,
+      lens,
+      maxCoauthor,
+      selectedValues,
+      topicColours,
+    ],
+  );
+  const visual = { marks, group, selectedId: selected?.id ?? null };
+  const callbacks = {
+    select: onSelect,
+    hover: setHovered,
+    box: (ids: Set<string>) => {
+      onGroup({ ids, label: 'Spatial selection', sourceLens: 'box' });
+      setBoxMode(false);
+    },
+    error: setRendererError,
+  };
+  const latest = useRef({ visual, callbacks });
+  useLayoutEffect(() => {
+    latest.current = { visual, callbacks };
+    rendererRef.current?.setVisual(visual, callbacks);
+  });
   useEffect(() => {
-    const canvas = canvasRef.current; if (!canvas) return; const ratio = Math.min(window.devicePixelRatio || 1, 2); canvas.width = Math.round(size.width * ratio); canvas.height = Math.round(size.height * ratio); canvas.style.width = `${size.width}px`; canvas.style.height = `${size.height}px`; const context = canvas.getContext('2d'); if (!context) return; context.setTransform(ratio, 0, 0, ratio, 0, 0); context.clearRect(0, 0, size.width, size.height);
-    const hasRelation = Boolean(selected) && ['publisher', 'journal', 'keywords', 'coauthorship'].includes(lens);
-    const dimsUnrelated = hasRelation && lens !== 'coauthorship';
-    const selectedScreen = selected ? pointById.get(selected.id) : null;
-    const radius = Math.min(3.8, 1.8 + Math.log2(Math.max(1, transform.scale)) * 0.55);
-    for (const point of screenPoints) {
-      if (point.x < -8 || point.y < -8 || point.x > size.width + 8 || point.y > size.height + 8) continue;
-      const mark = markFor(point.paper);
-      const connected = !dimsUnrelated || point.paper.id === selected?.id || relation.all.has(point.paper.id);
-      const state: MarkState = !connected && mark.state !== 'missing' ? 'filtered' : mark.state;
-      if (state === 'active') drawMark(context, point.x, point.y, mark.colours.length > 1 ? radius + 0.7 : radius, mark.colours, 0.96);
-      else drawNeutralMark(context, point.x, point.y, radius, state);
-      if (hasRelation && relation.all.has(point.paper.id)) { context.beginPath(); context.arc(point.x, point.y, radius + 1.7, 0, Math.PI * 2); context.strokeStyle = 'rgba(255,255,255,.82)'; context.lineWidth = 1; context.stroke(); }
-    }
-    if (selectedScreen) { context.beginPath(); context.arc(selectedScreen.x, selectedScreen.y, radius + 5, 0, Math.PI * 2); context.strokeStyle = '#FFFFFF'; context.lineWidth = 2; context.stroke(); context.beginPath(); context.arc(selectedScreen.x, selectedScreen.y, radius + 2, 0, Math.PI * 2); context.strokeStyle = 'rgba(9,12,16,.95)'; context.lineWidth = 1.5; context.stroke(); const mark = markFor(selected!); drawMark(context, selectedScreen.x, selectedScreen.y, radius + 0.8, mark.colours.length ? mark.colours : ['#FFFFFF'], 1); }
-  }, [lens, markFor, pointById, relation, screenPoints, selected, size, transform.scale]);
-
-  const nearest = useCallback((x: number, y: number) => { let best: ScreenPoint | null = null; let bestDistance = 11; const cellX = Math.floor(x / PICK_CELL); const cellY = Math.floor(y / PICK_CELL); for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (const point of pickGrid.get(`${cellX + dx}:${cellY + dy}`) ?? []) { const distance = Math.hypot(point.x - x, point.y - y); if (distance < bestDistance) { bestDistance = distance; best = point; } } return best; }, [pickGrid]);
-  const reset = useCallback(() => { setTransform({ scale: 1, tx: 0, ty: 0 }); setHovered(null); }, []);
-
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const renderer = new PaperRenderer(
+      canvas,
+      data,
+      latest.current.visual,
+      latest.current.callbacks,
+    );
+    rendererRef.current = renderer;
+    return () => {
+      renderer.destroy();
+      rendererRef.current = null;
+    };
+  }, [data]);
+  useEffect(() => {
+    rendererRef.current?.setDimension(dimension, coordinates);
+  }, [coordinates, dimension]);
+  useEffect(() => {
+    rendererRef.current?.setBoxMode(boxMode);
+  }, [boxMode]);
+  useEffect(() => {
+    if (dimension !== '3d' || coordinates) return;
+    const controller = new AbortController();
+    fetch(new URL('data/projection-3d.json', document.baseURI), {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok)
+          throw new Error(`3D data returned ${response.status}`);
+        return response.json() as Promise<{
+          ids: string[];
+          coordinates: Vec3[];
+        }>;
+      })
+      .then((payload) => {
+        if (
+          payload.ids?.length !== data.points.length ||
+          payload.coordinates?.length !== data.points.length ||
+          payload.ids.some((id, i) => id !== data.points[i].id) ||
+          payload.coordinates.some(
+            (p) =>
+              !Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite),
+          )
+        )
+          throw new Error('3D coordinates do not match the catalogue.');
+        if (!controller.signal.aborted)
+          setCoordinates(normalise3D(payload.coordinates));
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setProjectionError(error.message);
+      });
+    return () => controller.abort();
+  }, [attempt, coordinates, data.points, dimension]);
+  if (rendererError) throw rendererError;
+  const navigate = (action: string) => {
+    if (action === 'Zoom in') rendererRef.current?.zoom(1.25);
+    if (action === 'Zoom out') rendererRef.current?.zoom(1 / 1.25);
+    if (action === 'Reset view') rendererRef.current?.reset();
+    if (action === 'Fit all') rendererRef.current?.reset(true);
+  };
   return (
-    <div ref={hostRef} className="relative h-full min-h-[360px] w-full overflow-hidden bg-[var(--map-background)]">
-      <canvas ref={canvasRef} aria-label={`Semantic map of ${data.cohort.n.toLocaleString()} papers`} className="block touch-none cursor-grab active:cursor-grabbing" onDoubleClick={reset} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { x: event.clientX, y: event.clientY, tx: transform.tx, ty: transform.ty, moved: false }; }} onPointerMove={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); const x = event.clientX - bounds.left; const y = event.clientY - bounds.top; if (dragRef.current) { const dx = event.clientX - dragRef.current.x; const dy = event.clientY - dragRef.current.y; if (Math.abs(dx) + Math.abs(dy) > 3) dragRef.current.moved = true; setTransform((current) => ({ ...current, tx: dragRef.current!.tx + dx, ty: dragRef.current!.ty + dy })); setHovered(null); } else { const next = nearest(x, y); setHovered((current) => current?.paper.id === next?.paper.id ? current : next); } }} onPointerUp={(event) => { const bounds = event.currentTarget.getBoundingClientRect(); if (!dragRef.current?.moved) onSelect(nearest(event.clientX - bounds.left, event.clientY - bounds.top)?.paper ?? null); dragRef.current = null; }} onPointerLeave={() => { dragRef.current = null; setHovered(null); }} onPointerCancel={() => { dragRef.current = null; setHovered(null); }} onWheel={(event) => { event.preventDefault(); const bounds = event.currentTarget.getBoundingClientRect(); const x = event.clientX - bounds.left; const y = event.clientY - bounds.top; setTransform((current) => { const nextScale = Math.max(0.7, Math.min(8, current.scale * Math.exp(-event.deltaY * 0.0012))); const factor = nextScale / current.scale; return { scale: nextScale, tx: x - size.width / 2 - (x - size.width / 2 - current.tx) * factor, ty: y - size.height / 2 - (y - size.height / 2 - current.ty) * factor }; }); }} />
-      <div className="absolute bottom-4 left-4 flex items-center gap-1 border border-white/15 bg-[#11151a]/94 p-1 text-white shadow-sm backdrop-blur-sm"><Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Zoom in" onClick={() => setTransform((current) => ({ ...current, scale: Math.min(8, current.scale * 1.25) }))} />}><Plus /></TooltipTrigger><TooltipContent>Zoom in</TooltipContent></Tooltip><Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Zoom out" onClick={() => setTransform((current) => ({ ...current, scale: Math.max(0.7, current.scale / 1.25) }))} />}><Minus /></TooltipTrigger><TooltipContent>Zoom out</TooltipContent></Tooltip><Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-sm" className="text-white hover:bg-white/10 hover:text-white" aria-label="Reset map" onClick={reset} />}><LocateFixed /></TooltipTrigger><TooltipContent>Reset view</TooltipContent></Tooltip></div>
-      {hovered ? <div className="pointer-events-none absolute z-10 max-w-[280px] border border-white/20 bg-[#11151a]/96 px-3 py-2 text-xs text-white shadow-md" style={{ left: Math.max(8, Math.min(hovered.x + 12, size.width - 292)), top: Math.max(8, hovered.y - 46) }}><p className="line-clamp-2 font-medium leading-snug">{decodeHtmlEntities(hovered.paper.title)}</p><p className="mt-1 truncate text-white/60">{hovered.paper.journal || hovered.paper.publisher}</p></div> : null}
+    <div className="relative h-full min-h-[360px] w-full overflow-hidden bg-[var(--map-background)]">
+      <canvas
+        ref={canvasRef}
+        tabIndex={0}
+        aria-label={`${dimension === '3d' && coordinates ? '3D' : '2D'} semantic map of ${data.cohort.n.toLocaleString()} papers`}
+        aria-describedby="map-keyboard-help"
+        className="block h-full w-full touch-none cursor-grab focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-200"
+      />
+      <span id="map-keyboard-help" className="sr-only">
+        Plus and minus zoom. Arrow keys pan in 2D and rotate in 3D; Shift and
+        arrows pan in 3D. Home resets; Shift Home fits all. Drag rotates in 3D;
+        Shift-drag or two fingers pan. Use Select area to select papers within a
+        rectangle.
+      </span>
+      <div className="absolute bottom-4 left-4 flex max-w-[calc(100%-32px)] flex-wrap items-center gap-1 border border-white/20 bg-[#11151a] p-1 text-white">
+        <div
+          className="mr-1 flex border-r border-white/20 pr-2"
+          aria-label="Map dimension"
+        >
+          {(['2d', '3d'] as const).map((value) => (
+            <button
+              key={value}
+              aria-pressed={dimension === value}
+              className={`min-h-8 px-2.5 text-sm font-medium ${dimension === value ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white'}`}
+              onClick={() => {
+                setProjectionError('');
+                setDimension(value);
+              }}
+            >
+              {value.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        {[
+          { label: 'Zoom in', icon: Plus },
+          { label: 'Zoom out', icon: Minus },
+          { label: 'Reset view', icon: LocateFixed },
+          { label: 'Fit all', icon: Maximize },
+        ].map(({ label, icon: Icon }) => (
+          <Tooltip key={label}>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-white hover:bg-white/10 hover:text-white"
+                  aria-label={label}
+                  onClick={() => navigate(label)}
+                />
+              }
+            >
+              <Icon />
+            </TooltipTrigger>
+            <TooltipContent>{label}</TooltipContent>
+          </Tooltip>
+        ))}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`rounded-none border-l border-white/20 text-white hover:bg-white/10 hover:text-white ${boxMode ? 'bg-white/15' : ''}`}
+          aria-pressed={boxMode}
+          onClick={() => setBoxMode(!boxMode)}
+        >
+          <Scan />
+          Select area
+        </Button>
+      </div>
+      {dimension === '3d' && !coordinates ? (
+        <output className="absolute bottom-20 left-4 max-w-[calc(100%-32px)] border border-white/20 bg-[#11151a] px-3 py-2 text-sm text-white">
+          {projectionError ? (
+            <>
+              {projectionError}{' '}
+              <button
+                className="ml-2 underline"
+                onClick={() => {
+                  setProjectionError('');
+                  setAttempt((a) => a + 1);
+                }}
+              >
+                Retry
+              </button>{' '}
+              <button
+                className="ml-2 underline"
+                onClick={() => setDimension('2d')}
+              >
+                Use 2D
+              </button>
+            </>
+          ) : (
+            'Loading 3D projection…'
+          )}
+        </output>
+      ) : null}
+      {hovered ? (
+        <div
+          className="pointer-events-none absolute z-10 max-w-[280px] border border-white/20 bg-[#11151a] px-3 py-2 text-xs text-white"
+          style={{
+            left: Math.max(8, Math.min(hovered.x + 12, hovered.width - 292)),
+            top: Math.max(8, Math.min(hovered.y - 46, hovered.height - 130)),
+          }}
+        >
+          <p className="line-clamp-2 font-medium leading-snug">
+            {decodeHtmlEntities(hovered.paper.title)}
+          </p>
+          <p className="mt-1 truncate text-white/60">
+            {hovered.paper.journal || hovered.paper.publisher}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
