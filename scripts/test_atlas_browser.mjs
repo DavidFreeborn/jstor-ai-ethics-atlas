@@ -23,6 +23,10 @@ const server = process.env.ATLAS_URL
       { stdio: 'ignore', windowsHide: true },
     );
 const data = JSON.parse(await readFile('public/data/map.json', 'utf8'));
+const unionPositions = JSON.parse(
+  await readFile('public/data/positions-union.json', 'utf8'),
+);
+const unionIds = new Set(unionPositions.ids);
 const hash = (ids) => {
   let h = 2166136261;
   for (const id of [...ids].sort())
@@ -112,7 +116,14 @@ try {
   assert.deepEqual(await positionPicker.locator('option').allTextContents(), [
     'Titles (7,076 papers)',
     'Abstracts (2,057 papers)',
+    'Abstracts + full text (3,725 papers)',
   ]);
+  assert.equal(
+    await positionPicker
+      .locator('option[value="union"]')
+      .evaluate((option) => option.disabled),
+    false,
+  );
   const switchPositions = async (source) => {
     await positionPicker.selectOption(source);
     await page.waitForFunction((source) => {
@@ -147,6 +158,26 @@ try {
   await tick();
   const abstract3d = await stats();
   await page.screenshot({ path: `${output}/abstract-3d.png` });
+  await switchPositions('union');
+  assert.equal((await stats()).papers, unionIds.size);
+  assert.equal((await stats()).dimension, '3d');
+  assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
+  assert.match(
+    await page.getByRole('button', { name: /^LDA — 37 topics/ }).innerText(),
+    /2,051/,
+  );
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await tick();
+  const union3d = await stats();
+  await page.screenshot({ path: `${output}/union-3d.png` });
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await tick();
+  const union2d = await stats();
+  await page.screenshot({ path: `${output}/union-2d.png` });
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await tick();
+  assert.deepEqual((await stats()).camera, union3d.camera);
   await switchPositions('titles');
   await page.waitForFunction(() =>
     document
@@ -161,7 +192,13 @@ try {
   await tick();
   assert.deepEqual((await stats()).camera, abstract2d.camera);
   for (let i = 0; i < 12; i++)
-    await switchPositions(i % 2 ? 'abstracts' : 'titles');
+    await switchPositions(['titles', 'abstracts', 'union'][i % 3]);
+  await switchPositions('union');
+  assert.deepEqual((await stats()).camera, union2d.camera);
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await tick();
+  assert.deepEqual((await stats()).camera, union3d.camera);
+  await page.getByRole('button', { name: '2D', exact: true }).click();
   await switchPositions('titles');
   assert.deepEqual((await stats()).camera, start.camera);
   assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
@@ -176,6 +213,18 @@ try {
     .click();
   await tick();
   const crossCohortSelection = await stats();
+  await switchPositions('union');
+  const unionMapped = data.points.filter(
+    (p) => unionIds.has(p.id) && p.keywords.includes(crossCohortKeyword),
+  ).length;
+  assert.match(
+    await page.getByLabel('Persistent paper selection').innerText(),
+    new RegExp(`${unionMapped} mapped`),
+  );
+  assert.equal(
+    (await stats()).selectionHash,
+    crossCohortSelection.selectionHash,
+  );
   await switchPositions('abstracts');
   const abstractIds = new Set(
     JSON.parse(await readFile('public/data/positions-abstracts.json', 'utf8'))
@@ -206,7 +255,34 @@ try {
   await page.getByRole('button', { name: 'Deselect papers' }).click();
   await page.getByRole('button', { name: /^All papers/ }).click();
   report.checks.push(
-    'Title/abstract positions: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
+    'All three position modes: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
+  );
+  await switchPositions('union');
+  const fulltextPaper = data.points.find(
+    (p) => unionIds.has(p.id) && p.bertopic === undefined && p.type === 'book',
+  );
+  await page
+    .getByRole('textbox', { name: 'Search papers' })
+    .fill(fulltextPaper.title);
+  await page
+    .getByRole('list', { name: 'Search results' })
+    .getByRole('button')
+    .filter({ hasText: fulltextPaper.title })
+    .first()
+    .click();
+  await page.getByText('Sampled full text', { exact: true }).waitFor();
+  await switchPositions('abstracts');
+  assert.equal(
+    await page.getByRole('button', { name: 'Close paper details' }).count(),
+    0,
+  );
+  await switchPositions('union');
+  await page.getByText('Sampled full text', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await page.screenshot({ path: `${output}/union-default.png` });
+  await switchPositions('titles');
+  report.checks.push(
+    'Full-text paper provenance is explicit; paper selection survives a temporarily absent cohort',
   );
   // Same-task moves followed by pointer-up reproduced the null-reference failure on BOTH old live hosts.
   let bounds = await canvas.boundingBox();
@@ -580,6 +656,7 @@ try {
   await page.getByRole('button', { name: 'Papers', exact: true }).click();
   for (const viewport of [
     { width: 1024, height: 768 },
+    { width: 900, height: 700 },
     { width: 390, height: 844 },
     { width: 1440, height: 900 },
   ]) {
@@ -596,8 +673,30 @@ try {
     });
   }
   await page.getByRole('button', { name: 'Methodology', exact: true }).click();
-  await page.screenshot({ path: `${output}/new-methodology.png` });
+  await page.screenshot({
+    path: `${output}/new-methodology.png`,
+    animations: 'disabled',
+  });
+  await page.setViewportSize({ width: 320, height: 568 });
+  // The popup's 100 ms size transition must settle after a viewport resize.
+  await page.waitForFunction(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return false;
+    const bounds = dialog.getBoundingClientRect();
+    return bounds.top >= 15 && bounds.bottom <= innerHeight - 15;
+  });
+  const methodsDialog = page.getByRole('dialog', { name: 'Methodology', exact: true });
+  const methodsBounds = await methodsDialog.boundingBox();
+  assert(methodsBounds.y >= 15 && methodsBounds.y + methodsBounds.height <= 553);
+  await methodsDialog.evaluate((dialog) => dialog.scrollTo(0, dialog.scrollHeight));
+  assert(await methodsDialog.getByRole('heading', { name: 'Matrices', exact: true }).isVisible());
+  await page.screenshot({
+    path: `${output}/mobile-methodology.png`,
+    animations: 'disabled',
+  });
   await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  report.checks.push('Methodology stays within a 320×568 viewport and its final section remains reachable');
   // An invalid optional asset must leave a working 2D renderer and offer a genuine retry.
   await page.route('**/projection-3d.json', (route) =>
     route.fulfill({
@@ -634,7 +733,7 @@ try {
   assert.equal(await positionPicker.inputValue(), 'titles');
   assert.equal(await canvas.getAttribute('data-position-source'), 'titles');
   await page.unroute('**/positions-abstracts.json');
-  await page.getByRole('button', { name: 'Retry abstracts' }).click();
+  await page.getByRole('button', { name: 'Retry positions' }).click();
   await page.waitForFunction(
     () =>
       document.querySelector('canvas')?.dataset.positionSource === 'abstracts',
@@ -642,6 +741,29 @@ try {
   await positionPicker.selectOption('titles');
   report.checks.push(
     'Invalid abstract positions retain a working title map; retry restores 2,057 aligned papers',
+  );
+  await page.route('**/positions-union.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{"version":1,"ids":[]}',
+    }),
+  );
+  await positionPicker.selectOption('union');
+  await page
+    .getByText('Combined-text positions failed the release integrity check.')
+    .waitFor();
+  assert.equal(await positionPicker.inputValue(), 'titles');
+  assert(await canvas.isVisible());
+  await page.unroute('**/positions-union.json');
+  await page.getByRole('button', { name: 'Retry positions' }).click();
+  await page.waitForFunction(
+    () => document.querySelector('canvas')?.dataset.positionSource === 'union',
+  );
+  assert.match(await canvas.getAttribute('aria-label'), /3,725/);
+  await positionPicker.selectOption('titles');
+  report.checks.push(
+    'Combined-text asset integrity failure leaves the map usable; retry restores the correct union',
   );
   // Repeated unmounts must not leak document listeners, canvases, or retained atlas heaps.
   const cdp =
@@ -735,6 +857,13 @@ try {
         exact: true,
       })
       .click();
+    await mobile
+      .getByRole('combobox', { name: 'Positions', exact: true })
+      .selectOption('union');
+    await mobile.waitForFunction(
+      () =>
+        document.querySelector('canvas')?.dataset.positionSource === 'union',
+    );
     await mobile.keyboard.press('Escape');
     await mobile
       .getByRole('dialog', { name: 'Lens', exact: true })

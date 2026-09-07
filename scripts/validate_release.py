@@ -57,6 +57,29 @@ def main() -> None:
     assert abstracts["source_sha256"] == abstract_audit["source_sha256"]
     assert abstracts["source_sha256"] == next(item["sha256"] for item in manifest["sources"] if item["file"] == "s_scibert.npy")
     assert abstracts["index_sha256"] == next(item["sha256"] for item in manifest["sources"] if item["file"] == "doc_index.csv")
+    union = load("positions-union.json")
+    union_audit = json.loads((ROOT / "docs/UNION_POSITIONS_AUDIT.json").read_text(encoding="utf-8"))
+    union_release = json.loads((ROOT / "lib/union-release.json").read_text(encoding="utf-8"))
+    assert union["version"] == union_audit["version"] == 1
+    assert len(union["ids"]) == len(set(union["ids"])) == union_release["count"] == union_audit["papers"] == 3725
+    assert set(union["ids"]) <= {p["id"] for p in points}
+    assert len(union["sources"]) == 3725
+    assert Counter(union["sources"]) == {"abstract": 2057, "fulltext": 1668}
+    assert {i for i, s in zip(union["ids"], union["sources"]) if s == "abstract"} == set(abstracts["ids"])
+    assert sha256(PUBLIC / "positions-union.json") == union_release["sha256"] == union_audit["output_sha256"]
+    assert union["source_sha256"] == union_audit["source_sha256"]
+    assert union["parameters"] == union_audit["parameters"]
+    assert union_audit["raw_catalogue_sha256"] == next(item["sha256"] for item in manifest["sources"] if item["file"] == "jstor_catalogue.jsonl.gz")
+    for dimensions in (2, 3):
+        coordinates = union[f"coordinates{dimensions}d"]
+        assert len(coordinates) == 3725 and all(len(row) == dimensions and all(math.isfinite(v) for v in row) for row in coordinates)
+        assert [run["seed"] for run in union["audit"][str(dimensions)]] == [42, 43, 44]
+        assert union["audit"][str(dimensions)] == union_audit["audit"][str(dimensions)]
+    assert union_audit["coverage"]["counts"]["paired_usable"] == 423
+    assert union_audit["sensitivity"]["paired_abstract_vs_fulltext"]["documents"] == 423
+    assert union_audit["encoder"]["sampled_passage_tokens_discarded"] == 0
+    assert union_audit["encoder"]["abstract_tokens_discarded"] == 0
+    assert union_audit["encoder"]["protocol"]["input_sha256"] == union_audit["coverage"]["input_sha256"]
     coverage = atlas["cohort"]["coverage"]
     assert coverage == {
         "bertopic": 2057,

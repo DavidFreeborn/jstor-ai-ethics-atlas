@@ -28,6 +28,8 @@ import type { MapData } from '../lib/atlas-types.ts';
 import {
   abstractMap,
   validateAbstractPositions,
+  validateUnionPositions,
+  verifyPositionBytes,
 } from '../lib/paper-positions.ts';
 const data: MapData = JSON.parse(readFileSync('public/data/map.json', 'utf8'));
 const payload = JSON.parse(
@@ -35,6 +37,84 @@ const payload = JSON.parse(
 );
 const abstractPositions = validateAbstractPositions(payload, data);
 const abstracts = abstractMap(data, abstractPositions);
+const unionPayload = JSON.parse(
+  readFileSync('public/data/positions-union.json', 'utf8'),
+);
+const unionRelease = JSON.parse(readFileSync('lib/union-release.json', 'utf8'));
+const union = abstractMap(
+  data,
+  validateUnionPositions(unionPayload, data, unionRelease),
+  'union',
+);
+assert.equal(union.points.length, unionRelease.count);
+assert.equal(union.cohort.coverage.bertopic, 2057);
+assert.equal(union.cohort.coverage.lda, 2051);
+assert.equal(union.cohort.coverage.neighbour_agreement, 1797);
+assert.equal(union.cohort.coverage.journal, 2090);
+assert.equal(union.cohort.coverage.keywords, 3286);
+assert.equal(union.cohort.coverage.authors, 3707);
+assert.deepEqual(
+  union.points.map((p) => p.id),
+  unionPayload.ids,
+);
+assert(
+  union.points.every(
+    (p, i) =>
+      p.i === i &&
+      p.x === unionPayload.coordinates2d[i][0] &&
+      p.y === unionPayload.coordinates2d[i][1],
+  ),
+);
+const unionIds = new Set(unionPayload.ids);
+assert(abstractPositions.ids.every((id) => unionIds.has(id)));
+for (const [facet, field] of [
+  ['publishers', 'publisher'],
+  ['journals', 'journal'],
+  ['keywords', 'keywords'],
+] as const) {
+  for (const item of union.facets[facet])
+    assert.equal(
+      item.count,
+      union.points.filter((p) =>
+        field === 'keywords'
+          ? p.keywords.includes(item.value)
+          : p[field] === item.value,
+      ).length,
+    );
+}
+for (const p of union.points)
+  assert.equal(
+    p.coauthor_count,
+    union.points.filter(
+      (q) => p.id !== q.id && p.authors.some((a) => q.authors.includes(a)),
+    ).length,
+  );
+for (const invalid of [
+  null,
+  {},
+  { ...unionPayload, ids: unionPayload.ids.slice(1) },
+  { ...unionPayload, ids: unionPayload.ids.map(() => unionPayload.ids[0]) },
+  { ...unionPayload, sources: [] },
+  { ...unionPayload, sources: unionPayload.sources.map(() => 'abstract') },
+  { ...unionPayload, coordinates3d: unionPayload.coordinates2d },
+  {
+    ...unionPayload,
+    coordinates2d: unionPayload.coordinates2d.map(() => [Infinity, 1]),
+  },
+])
+  assert.throws(
+    () => validateUnionPositions(invalid, data, unionRelease),
+    /do not match/,
+  );
+const unionBytes = new Uint8Array(
+  readFileSync('public/data/positions-union.json'),
+);
+await verifyPositionBytes(unionBytes.buffer, unionRelease.sha256);
+unionBytes[0] ^= 1;
+await assert.rejects(
+  verifyPositionBytes(unionBytes.buffer, unionRelease.sha256),
+  /integrity/,
+);
 assert.equal(abstracts.points.length, 2057);
 assert.equal(abstracts.cohort.coverage.lda, 2051);
 assert.equal(

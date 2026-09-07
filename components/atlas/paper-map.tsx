@@ -39,7 +39,7 @@ function interpolateStops(value: number, stops: readonly string[]) {
 export function PaperMap({
   data,
   positionSource,
-  abstractCoordinates,
+  textCoordinates,
   hasSelection,
   lens,
   selected,
@@ -52,7 +52,7 @@ export function PaperMap({
 }: {
   data: MapData;
   positionSource: PositionSource;
-  abstractCoordinates: Vec3[] | null;
+  textCoordinates: Vec3[] | null;
   hasSelection: boolean;
   lens: PaperLens;
   selected: PaperPoint | null;
@@ -67,12 +67,18 @@ export function PaperMap({
     rendererRef = useRef<PaperRenderer | null>(null);
   const [dimension, setDimension] = useState<'2d' | '3d'>('2d'),
     [titleCoordinates, setTitleCoordinates] = useState<Vec3[] | null>(null);
-  const abstract3d = useMemo(
-    () => (abstractCoordinates ? normalise3D(abstractCoordinates) : null),
-    [abstractCoordinates],
-  );
-  const coordinates =
-    positionSource === 'abstracts' ? abstract3d : titleCoordinates;
+  // Stable normalised arrays let the renderer restore each source's 3D camera.
+  const [coordinateCache] = useState(() => new WeakMap<Vec3[], Vec3[]>());
+  const text3d = useMemo(() => {
+    if (!textCoordinates) return null;
+    let coordinates = coordinateCache.get(textCoordinates);
+    if (!coordinates) {
+      coordinates = normalise3D(textCoordinates);
+      coordinateCache.set(textCoordinates, coordinates);
+    }
+    return coordinates;
+  }, [coordinateCache, textCoordinates]);
+  const coordinates = positionSource === 'titles' ? titleCoordinates : text3d;
   const [projectionError, setProjectionError] = useState(''),
     [attempt, setAttempt] = useState(0),
     [boxMode, setBoxMode] = useState(false);
@@ -209,9 +215,23 @@ export function PaperMap({
       onClearSelection();
     },
   };
-  const latest = useRef({ data, visual, callbacks });
+  const latest = useRef({
+    data,
+    visual,
+    callbacks,
+    positionSource,
+    dimension,
+    coordinates,
+  });
   useLayoutEffect(() => {
-    latest.current = { data, visual, callbacks };
+    latest.current = {
+      data,
+      visual,
+      callbacks,
+      positionSource,
+      dimension,
+      coordinates,
+    };
     rendererRef.current?.setData(data, positionSource);
     rendererRef.current?.setDimension(dimension, coordinates);
     rendererRef.current?.setVisual(visual, callbacks);
@@ -224,7 +244,9 @@ export function PaperMap({
       latest.current.data,
       latest.current.visual,
       latest.current.callbacks,
+      latest.current.positionSource,
     );
+    renderer.setDimension(latest.current.dimension, latest.current.coordinates);
     rendererRef.current = renderer;
     return () => {
       renderer.destroy();

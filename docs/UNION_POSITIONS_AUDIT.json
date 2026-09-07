@@ -1,0 +1,247 @@
+{
+  "version": 1,
+  "papers": 3725,
+  "output_sha256": "26f482187fb28050e948e23aea2d0d28bd977bb47ac6ac07edf89d6f6c9e3b32",
+  "source_sha256": "1e968997eaa99b74b204b4b91e83eaad12e5cc6e763141d545f6be410495e13f",
+  "index_sha256": "6283c2db6ee9fc20066d5ef700dcb358c68508ce00986765018af731c2c74573",
+  "raw_catalogue_sha256": "73047223abb1956c7482979a243785835543646733fb6a910cf78435de773a74",
+  "pipeline_source_sha256": {
+    "build_union_source.py": "9ca09c23f173cdb81a5e987f9cf18f35e9fec2770219a4e3fa46a78516a229a9",
+    "build_union_embeddings.py": "a9c60cc237d3c1a310969b28902dc6448c7b8bc961aaf577f0278a0a9e75e35a",
+    "build_union_positions.py": "74cf2423128768a54197b27e87be5280bad07121697acadecc4d9964c8320e3f"
+  },
+  "coverage": {
+    "counts": {
+      "catalogue": 7076,
+      "raw_abstract_nonempty": 2100,
+      "raw_fulltext_nonempty": 2091,
+      "fulltext_non_english_or_unlabelled": 0,
+      "english_fulltext_below_quality_threshold": 0,
+      "usable_english_fulltext": 2091,
+      "fulltext": 1668,
+      "paired_usable": 423,
+      "abstract": 2057
+    },
+    "union": 3725,
+    "by_type": {
+      "research_report": {
+        "fulltext": 827
+      },
+      "article": {
+        "abstract": 1709,
+        "fulltext": 83
+      },
+      "document": {
+        "fulltext": 13,
+        "abstract": 1
+      },
+      "chapter": {
+        "fulltext": 167,
+        "abstract": 347
+      },
+      "book": {
+        "fulltext": 578
+      }
+    },
+    "fulltext_languages": {
+      "eng": 2088,
+      "en": 3
+    },
+    "source_policy": "Released abstract where available; usable English full text otherwise",
+    "fulltext_minimum": {
+      "words": 50,
+      "alphabetic_words": 30,
+      "distinct_alphabetic_words": 20
+    },
+    "sampling": {
+      "max_windows": 8,
+      "window_words": 256,
+      "placement": "centres of equal-length strata; all windows for shorter texts"
+    },
+    "input_sha256": "b8c9706fc06e53267f967692690546565aa4451d0618e7471886530652ec8d33",
+    "raw_abstracts_outside_frozen_cohort": 43,
+    "sampled_fraction_of_fulltext_words_by_type": {
+      "article": {
+        "p05": 0.165899,
+        "median": 0.68495,
+        "p95": 1.0
+      },
+      "book": {
+        "p05": 0.007787,
+        "median": 0.01948,
+        "p95": 0.044009
+      },
+      "chapter": {
+        "p05": 0.10371,
+        "median": 0.412155,
+        "p95": 1.0
+      },
+      "document": {
+        "p05": 0.429025,
+        "median": 1.0,
+        "p95": 1.0
+      },
+      "research_report": {
+        "p05": 0.03373,
+        "median": 0.248664,
+        "p95": 1.0
+      }
+    },
+    "fulltext_model_release_comparison": {
+      "existing_model_records": 1789,
+      "available_texts_outside_model": 302,
+      "outside_model_over_100000_words": 297,
+      "outside_model_below_100_words": 4,
+      "interpretation": "The position view has its own stated eligibility and is not limited to an existing full-text topic model. Length counts do not by themselves establish the upstream exclusion rules."
+    }
+  },
+  "encoder": {
+    "protocol": {
+      "model": "allenai/specter",
+      "revision": "81cbfb43d4fc2e728d5b4201ce14987db8d0854c",
+      "body_tokens": 448,
+      "title_tokens": 32,
+      "pooling": "token-weighted unit CLS mean within passages; equal passage mean; unit document vector",
+      "dtype": "float32",
+      "input_sha256": "b8c9706fc06e53267f967692690546565aa4451d0618e7471886530652ec8d33"
+    },
+    "documents": 3725,
+    "software": {
+      "torch": "2.10.0+cpu",
+      "transformers": "5.2.0",
+      "numpy": "2.4.2"
+    },
+    "diagnostics_columns": [
+      "abstract_chunks",
+      "fulltext_windows",
+      "fulltext_chunks",
+      "sampled_fulltext_tokens"
+    ],
+    "model_input_maximum": 483,
+    "sampled_passage_tokens_discarded": 0,
+    "abstract_tokens_discarded": 0,
+    "diagnostics_summary": {
+      "abstract_chunks": {
+        "p05": 0.0,
+        "median": 1.0,
+        "p95": 1.0
+      },
+      "fulltext_windows": {
+        "p05": 0.0,
+        "median": 8.0,
+        "p95": 8.0
+      },
+      "fulltext_chunks": {
+        "p05": 0.0,
+        "median": 8.0,
+        "p95": 14.0
+      },
+      "sampled_fulltext_tokens": {
+        "p05": 0.0,
+        "median": 2630.0,
+        "p95": 4106.4
+      }
+    }
+  },
+  "parameters": {
+    "n_neighbors": 30,
+    "min_dist": 0.08,
+    "metric": "cosine",
+    "n_jobs": 1,
+    "random_state": 42
+  },
+  "audit": {
+    "2": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.891382,
+        "neighbour_recall_15": 0.240251,
+        "neighbour_recall_30": 0.266819,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.888614,
+        "neighbour_recall_15": 0.238049,
+        "neighbour_recall_30": 0.264358,
+        "seed_neighbour_overlap_15": 0.58579
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.892918,
+        "neighbour_recall_15": 0.240895,
+        "neighbour_recall_30": 0.267803,
+        "seed_neighbour_overlap_15": 0.593593
+      }
+    ],
+    "3": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.919382,
+        "neighbour_recall_15": 0.293423,
+        "neighbour_recall_30": 0.307723,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.919389,
+        "neighbour_recall_15": 0.291812,
+        "neighbour_recall_30": 0.308188,
+        "seed_neighbour_overlap_15": 0.756743
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.917488,
+        "neighbour_recall_15": 0.291651,
+        "neighbour_recall_30": 0.308116,
+        "seed_neighbour_overlap_15": 0.733817
+      }
+    ]
+  },
+  "sensitivity": {
+    "four_vs_eight_windows": {
+      "documents": 1510,
+      "cosine_similarity": {
+        "p05": 0.982711,
+        "median": 0.991507,
+        "p95": 0.996245
+      },
+      "neighbour_overlap_30": 0.684547,
+      "protocol": "Alternate four of eight windows; shorter full texts and all abstracts held fixed"
+    },
+    "paired_abstract_vs_fulltext": {
+      "documents": 423,
+      "by_type": {
+        "chapter": 347,
+        "article": 76
+      },
+      "cosine_similarity": {
+        "p05": 0.852726,
+        "median": 0.930315,
+        "p95": 0.966332
+      },
+      "neighbour_overlap_30": 0.425296
+    },
+    "same_source_neighbour_fraction_30": 0.612179,
+    "random_mixing_baseline": 0.50532,
+    "interpretation": "Source mixing is confounded by document type and content; paired sensitivity is descriptive, not a controlled text-length experiment."
+  },
+  "software": {
+    "numpy": "2.4.2",
+    "sklearn": "1.8.0",
+    "umap": "0.5.11"
+  },
+  "references": [
+    "https://github.com/allenai/specter",
+    "https://umap-learn.readthedocs.io/en/latest/reproducibility.html"
+  ],
+  "limitations": [
+    "Abstract-first coverage union; 423 paired full texts do not create extra points or enter the released representation.",
+    "The paired cohort has no books. Its source sensitivity does not validate book representations.",
+    "Full text is sampled in at most eight 256-word windows; this is not exhaustive full-document encoding.",
+    "Four/eight-window sensitivity is a nested subsampling check, not an independent assessment of exhaustive coverage.",
+    "SPECTER was trained for titles and abstracts. Applying it to full-text windows is an exploratory extension.",
+    "Text source, encoder and cohort change across position modes; gaps and cluster sizes are not direct semantic measurements.",
+    "Topic labels remain frozen abstract assignments. More geometry does not imply more topic-model coverage."
+  ]
+}

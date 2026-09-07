@@ -34,9 +34,12 @@ import { facetGroup, topicGroup, type PaperGroup } from '@/lib/paper-selection';
 import {
   abstractMap,
   validateAbstractPositions,
+  validateUnionPositions,
+  verifyPositionBytes,
   type AbstractPositions,
   type PositionSource,
 } from '@/lib/paper-positions';
+import unionRelease from '@/lib/union-release.json';
 
 export type RelationState = { all: Set<string>; shared: Map<string, string[]> };
 export type FacetSelections = Record<
@@ -251,7 +254,7 @@ function LensControls({
             onChange={(event) =>
               onPositions(event.target.value as PositionSource)
             }
-            className="h-9 w-full min-w-0 rounded-none border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-9 w-full min-w-0 rounded-none border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring max-lg:px-1 max-lg:text-[13px] max-sm:px-2 max-sm:text-sm"
           >
             <option value="titles">
               Titles ({catalogueCount.toLocaleString()} papers)
@@ -259,13 +262,20 @@ function LensControls({
             <option value="abstracts">
               Abstracts ({abstractCount.toLocaleString()} papers)
             </option>
+            <option
+              value="union"
+              disabled={!/^[a-f0-9]{64}$/.test(unionRelease.sha256)}
+            >
+              Abstracts + full text ({unionRelease.count.toLocaleString()}{' '}
+              papers)
+            </option>
           </select>
         </label>
         {positionError ? (
           <p role="alert" className="mt-2 text-sm text-destructive">
             {positionError}{' '}
             <button className="underline" onClick={onRetryPositions}>
-              Retry abstracts
+              Retry positions
             </button>
           </p>
         ) : null}
@@ -347,7 +357,7 @@ function LensControls({
             <span>higher</span>
           </div>
           <p className="mt-2 text-xs leading-4 text-muted-foreground">
-            BERTopic–LDA overlap among 30 nearest neighbours.
+            BERTopic–LDA overlap in 30 abstract-based neighbours.
           </p>
         </div>
       ) : null}
@@ -427,6 +437,10 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   const [positions, setPositions] = useState<PositionSource>('titles');
   const [abstractPositions, setAbstractPositions] =
     useState<AbstractPositions | null>(null);
+  const [unionPositions, setUnionPositions] =
+    useState<AbstractPositions | null>(null);
+  const [failedPositions, setFailedPositions] =
+    useState<PositionSource>('abstracts');
   const [positionError, setPositionError] = useState('');
   const [positionAttempt, setPositionAttempt] = useState(0);
   const abstractData = useMemo(
@@ -434,35 +448,61 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       abstractPositions ? abstractMap(catalogue, abstractPositions) : null,
     [catalogue, abstractPositions],
   );
-  const data =
-    positions === 'abstracts' && abstractData ? abstractData : catalogue;
-  const activePositions = data === catalogue ? 'titles' : 'abstracts';
+  const unionData = useMemo(
+    () =>
+      unionPositions ? abstractMap(catalogue, unionPositions, 'union') : null,
+    [catalogue, unionPositions],
+  );
+  const loadedData =
+    positions === 'abstracts'
+      ? abstractData
+      : positions === 'union'
+        ? unionData
+        : catalogue;
+  const data = loadedData ?? catalogue;
+  const activePositions = data === catalogue ? 'titles' : positions;
   useEffect(() => {
-    if (positions !== 'abstracts' || abstractPositions) return;
+    if (positions === 'titles' || loadedData) return;
+    const label = positions === 'union' ? 'Combined-text' : 'Abstract';
+    const fail = (message: string) => {
+      setPositionError(message);
+      setFailedPositions(positions);
+      setPositions('titles');
+    };
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
-      setPositionError('Abstract positions took too long to load.');
-      setPositions('titles');
+      fail(`${label} positions took too long to load.`);
     }, 15000);
-    fetch(new URL('data/positions-abstracts.json', document.baseURI), {
+    fetch(new URL(`data/positions-${positions}.json`, document.baseURI), {
       signal: controller.signal,
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error('Could not load abstract positions.');
-        return validateAbstractPositions(await response.json(), catalogue);
+        if (!response.ok)
+          throw new Error(`Could not load ${label.toLowerCase()} positions.`);
+        if (positions === 'abstracts')
+          return validateAbstractPositions(await response.json(), catalogue);
+        const bytes = await response.arrayBuffer();
+        await verifyPositionBytes(bytes, unionRelease.sha256);
+        return validateUnionPositions(
+          JSON.parse(new TextDecoder().decode(bytes)),
+          catalogue,
+          unionRelease,
+        );
       })
       .then((payload) => {
-        if (!controller.signal.aborted) setAbstractPositions(payload);
+        if (!controller.signal.aborted) {
+          if (positions === 'abstracts') setAbstractPositions(payload);
+          else setUnionPositions(payload);
+        }
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setPositionError(
+          fail(
             error instanceof Error
               ? error.message
-              : 'Could not load abstract positions.',
+              : `Could not load ${label.toLowerCase()} positions.`,
           );
-          setPositions('titles');
         }
       })
       .finally(() => clearTimeout(timeout));
@@ -470,7 +510,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [abstractPositions, catalogue, positionAttempt, positions]);
+  }, [loadedData, catalogue, positionAttempt, positions]);
   const defaults = useMemo<FacetSelections>(
     () => ({
       publisher: data.facets.publishers.slice(0, 10).map((item) => item.value),
@@ -642,7 +682,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       onRetryPositions={() => {
         setPositionError('');
         setPositionAttempt((attempt) => attempt + 1);
-        setPositions('abstracts');
+        setPositions(failedPositions);
       }}
       lens={lens}
       topicFilter={topicFilter}
@@ -694,7 +734,10 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
         <PaperMap
           data={data}
           positionSource={activePositions}
-          abstractCoordinates={abstractPositions?.coordinates3d ?? null}
+          textCoordinates={
+            (activePositions === 'union' ? unionPositions : abstractPositions)
+              ?.coordinates3d ?? null
+          }
           hasSelection={!!group || !!selectedId}
           lens={lens}
           selected={selected}
@@ -705,9 +748,10 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
           selections={selections}
           colourSlots={colourSlots}
         />
-        {positions === 'abstracts' && !abstractData ? (
+        {!loadedData ? (
           <output className="absolute inset-0 z-40 grid place-items-center bg-[var(--map-background)] text-sm text-white">
-            Loading abstract positions…
+            Loading {positions === 'union' ? 'combined-text' : 'abstract'}{' '}
+            positions…
           </output>
         ) : null}
         {group ? (
@@ -850,6 +894,20 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                   <span>{selected.journal || 'Unavailable'}</span>
                   <span className="text-muted-foreground">Publisher</span>
                   <span>{selected.publisher || 'Unavailable'}</span>
+                  {activePositions === 'union' ? (
+                    <>
+                      <span className="text-muted-foreground">
+                        Position text
+                      </span>
+                      <span>
+                        {unionPositions?.sources?.[selected.i] === 'abstract'
+                          ? 'Abstract'
+                          : unionPositions?.sources?.[selected.i] === 'fulltext'
+                            ? 'Sampled full text'
+                            : 'Unavailable'}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
                 {activeValue ? (
                   <div className="border-y border-border py-3">

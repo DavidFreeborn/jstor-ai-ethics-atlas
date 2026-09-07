@@ -79,9 +79,11 @@ export class PaperRenderer {
     data: MapData,
     visual: VisualState,
     callbacks: Callbacks,
+    positionSource = 'titles',
   ) {
     this.canvas = canvas;
     this.data = data;
+    this.positionSource = positionSource;
     this.visual = visual;
     this.callbacks = callbacks;
     const context = canvas.getContext('2d', { alpha: false });
@@ -138,7 +140,7 @@ export class PaperRenderer {
     this.request();
   }
   setData(data: MapData, positionSource: string) {
-    if (this.data === data) return;
+    if (this.data === data && this.positionSource === positionSource) return;
     this.savedCameras.set(this.positionSource, {
       camera2: this.camera2,
       camera3: this.camera3,

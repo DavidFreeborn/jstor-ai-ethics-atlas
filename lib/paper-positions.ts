@@ -1,7 +1,7 @@
 import type { FacetValue, MapData, PaperPoint } from './atlas-types';
 import type { Vec3 } from './map-camera';
 
-export type PositionSource = 'titles' | 'abstracts';
+export type PositionSource = 'titles' | 'abstracts' | 'union';
 export type AbstractPositions = {
   version: number;
   ids: string[];
@@ -9,7 +9,76 @@ export type AbstractPositions = {
   coordinates3d: Vec3[];
   embedding: string;
   parameters: Record<string, string | number>;
+  sources?: ('abstract' | 'fulltext')[];
 };
+
+export type UnionRelease = {
+  count: number;
+  abstracts: number;
+  fulltext: number;
+  sha256: string;
+};
+
+/** Check the exact frozen bytes as well as the cohort/coordinate schema. */
+export async function verifyPositionBytes(
+  bytes: ArrayBuffer,
+  expected: string,
+) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const actual = [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  if (actual !== expected)
+    throw new Error(
+      'Combined-text positions failed the release integrity check.',
+    );
+}
+
+export function validateUnionPositions(
+  value: unknown,
+  catalogue: MapData,
+  release: UnionRelease,
+): AbstractPositions {
+  const p = value as AbstractPositions | null;
+  const byId = new Map(catalogue.points.map((paper) => [paper.id, paper]));
+  const rowsValid = (rows: unknown, dimensions: number) =>
+    Array.isArray(rows) &&
+    rows.length === release.count &&
+    rows.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === dimensions &&
+        row.every((v) => typeof v === 'number' && Number.isFinite(v)),
+    );
+  if (
+    !p ||
+    p.version !== 1 ||
+    !Array.isArray(p.ids) ||
+    p.ids.length !== release.count ||
+    new Set(p.ids).size !== release.count ||
+    p.ids.some((id) => !byId.has(id)) ||
+    !rowsValid(p.coordinates2d, 2) ||
+    !rowsValid(p.coordinates3d, 3) ||
+    typeof p.embedding !== 'string' ||
+    !p.parameters ||
+    typeof p.parameters !== 'object' ||
+    !Array.isArray(p.sources) ||
+    p.sources.length !== release.count ||
+    p.sources.filter((s) => s === 'abstract').length !== release.abstracts ||
+    p.sources.filter((s) => s === 'fulltext').length !== release.fulltext ||
+    p.sources.some(
+      (s, i) =>
+        s !==
+        (byId.get(p.ids[i])!.bertopic !== undefined ? 'abstract' : 'fulltext'),
+    ) ||
+    release.abstracts !== catalogue.cohort.coverage.bertopic
+  ) {
+    throw new Error(
+      'Combined-text positions do not match the released papers.',
+    );
+  }
+  return p;
+}
 
 /** Reject misaligned or partial releases before any displayed coordinates change. */
 export function validateAbstractPositions(
@@ -52,6 +121,7 @@ export function validateAbstractPositions(
 export function abstractMap(
   catalogue: MapData,
   positions: AbstractPositions,
+  source: 'abstracts' | 'union' = 'abstracts',
 ): MapData {
   const byId = new Map(catalogue.points.map((p) => [p.id, p]));
   const points = positions.ids.map((id, i) => ({
@@ -111,7 +181,8 @@ export function abstractMap(
     },
     cohort: {
       ...catalogue.cohort,
-      label: 'Abstract cohort',
+      label:
+        source === 'union' ? 'Abstract and full-text union' : 'Abstract cohort',
       n: points.length,
       coverage: {
         bertopic: count((p) => p.bertopic !== undefined),
@@ -140,7 +211,7 @@ export function abstractMap(
         ],
       },
       interpretation:
-        'Local proximity approximates abstract-semantic neighbourhoods; global spacing is not a semantic distance.',
+        'Local proximity approximates text-semantic neighbourhoods; global spacing is not a semantic distance.',
     },
     facets: {
       ...catalogue.facets,

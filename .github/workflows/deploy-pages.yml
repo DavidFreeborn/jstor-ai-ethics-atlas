@@ -39,6 +39,8 @@ jobs:
         run: npm run test:map
       - name: Validate released data
         run: python scripts/validate_release.py
+      - name: Test combined-text source protocol
+        run: python scripts/test_union_source.py
       - name: Audit colour palette
         run: python scripts/audit_palette.py
       - name: Build Sites worker
