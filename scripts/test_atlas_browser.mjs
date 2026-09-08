@@ -116,7 +116,7 @@ try {
   assert.deepEqual(await positionPicker.locator('option').allTextContents(), [
     'Titles (7,076 papers)',
     'Abstracts (2,057 papers)',
-    'Abstracts + full text (3,725 papers)',
+    'Abstracts ∪ full text (3,725 papers)',
   ]);
   assert.equal(
     await positionPicker

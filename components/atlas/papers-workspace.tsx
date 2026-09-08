@@ -266,7 +266,7 @@ function LensControls({
               value="union"
               disabled={!/^[a-f0-9]{64}$/.test(unionRelease.sha256)}
             >
-              Abstracts + full text ({unionRelease.count.toLocaleString()}{' '}
+              Abstracts ∪ full text ({unionRelease.count.toLocaleString()}{' '}
               papers)
             </option>
           </select>

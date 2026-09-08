@@ -2,7 +2,7 @@
 
 ## Scope and evidence contract
 
-Add one Positions option, **Abstracts + full text (N papers)**, alongside the
+Add one Positions option, **Abstracts ∪ full text (N papers)** (union), alongside the
 unchanged title and frozen-abstract layouts. The union is an exploratory geometry,
 not a new topic-model release. Use canonical catalogue IDs, one point per record,
 and a single encoder for both input types. Never splice independent projections.

@@ -4,7 +4,7 @@ An interactive research atlas for exploring the complete AI ethics literature ca
 
 **Live atlas:** [GitHub Pages](https://davidfreeborn.github.io/jstor-ai-ethics-atlas/) · [Sites release](https://jstor-ai-ethics-atlas.dafidius.chatgpt.site)
 
-The public interface has a paper atlas and a correlation-matrix workspace. **Positions** offers titles (7,076 records), frozen abstracts (2,057), and an abstract/full-text union (3,725). Each has independently fitted 2D and 3D UMAP projections. Positions remain fixed across lenses within each representation and dimension:
+The public interface has a paper atlas and a correlation-matrix workspace. **Positions** offers titles (7,076 records), frozen abstracts (2,057), and **Abstracts ∪ full text** (union, 3,725). Each has independently fitted 2D and 3D UMAP projections. Positions remain fixed across lenses within each representation and dimension:
 
 - **Topic models** — 26-topic BERTopic, the fixed 9-topic reduction, and 37-topic LDA.
 - **Neighbourhood agreement** — local BERTopic–LDA agreement within abstract-semantic neighbourhoods.
