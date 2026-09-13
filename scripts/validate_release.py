@@ -80,6 +80,37 @@ def main() -> None:
     assert union_audit["encoder"]["sampled_passage_tokens_discarded"] == 0
     assert union_audit["encoder"]["abstract_tokens_discarded"] == 0
     assert union_audit["encoder"]["protocol"]["input_sha256"] == union_audit["coverage"]["input_sha256"]
+    text_availability = json.loads((ROOT / "lib/text-availability.json").read_text(encoding="utf-8"))
+    fulltext = load("positions-fulltext.json")
+    fulltext_release = json.loads((ROOT / "lib/fulltext-release.json").read_text(encoding="utf-8"))
+    fulltext_audit = json.loads((ROOT / "docs/FULLTEXT_POSITIONS_AUDIT.json").read_text(encoding="utf-8"))
+    ab_ids = {text_availability["id_prefix"] + i for i in text_availability["abstracts"]}
+    ft_ids = {text_availability["id_prefix"] + i for i in text_availability["fulltext"]}
+    assert len(ab_ids) == len(text_availability["abstracts"]) == 2100
+    assert len(ft_ids) == len(text_availability["fulltext"]) == 2091
+    assert len(ab_ids & ft_ids) == 423
+    assert text_availability["version"] == fulltext["version"] == 1
+    assert text_availability["counts"] == fulltext_audit["availability"] == {
+        "abstracts": len(ab_ids), "fulltext": len(ft_ids), "both": len(ab_ids & ft_ids),
+        "abstract_only": len(ab_ids - ft_ids), "fulltext_only": len(ft_ids - ab_ids),
+        "neither": len(points) - len(ab_ids | ft_ids),
+    }
+    assert fulltext["source_sha256"] == fulltext_audit["source_sha256"]
+    assert ab_ids | ft_ids <= {p["id"] for p in points}
+    assert set(abstracts["ids"]) <= ab_ids
+    assert set(union["ids"]) == set(abstracts["ids"]) | ft_ids
+    assert ab_ids & ft_ids == {p["id"] for p in methods["paired"]["papers"]}
+    assert fulltext["ids"] == [text_availability["id_prefix"] + i for i in text_availability["fulltext"]]
+    assert fulltext_audit["source_composition"] == {"fulltext_only": 1668, "paired_fulltext": 423, "abstract_vectors": 0}
+    assert sha256(PUBLIC / "positions-fulltext.json") == fulltext_release["sha256"] == fulltext_audit["output_sha256"]
+    assert sha256(ROOT / "lib/text-availability.json") == fulltext_audit["availability_sha256"]
+    assert fulltext["parameters"] == fulltext_audit["parameters"]
+    for dimensions in (2, 3):
+        coordinates = fulltext[f"coordinates{dimensions}d"]
+        assert len(coordinates) == fulltext_release["count"] == fulltext_audit["papers"] == 2091
+        assert all(len(row) == dimensions and all(math.isfinite(v) for v in row) for row in coordinates)
+        assert [r["seed"] for r in fulltext["audit"][str(dimensions)]] == [42, 43, 44]
+        assert fulltext["audit"][str(dimensions)] == fulltext_audit["audit"][str(dimensions)]
     coverage = atlas["cohort"]["coverage"]
     assert coverage == {
         "bertopic": 2057,

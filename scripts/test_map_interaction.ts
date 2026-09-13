@@ -27,10 +27,17 @@ import { decodeHtmlEntities } from '../lib/display-text.ts';
 import type { MapData } from '../lib/atlas-types.ts';
 import {
   abstractMap,
+  subsetMap,
   validateAbstractPositions,
+  validateFulltextPositions,
   validateUnionPositions,
   verifyPositionBytes,
 } from '../lib/paper-positions.ts';
+import {
+  matchesText,
+  textFilterCounts,
+  TEXT_FILTERS,
+} from '../lib/paper-text-filter.ts';
 const data: MapData = JSON.parse(readFileSync('public/data/map.json', 'utf8'));
 const payload = JSON.parse(
   readFileSync('public/data/positions-abstracts.json', 'utf8'),
@@ -46,6 +53,98 @@ const union = abstractMap(
   validateUnionPositions(unionPayload, data, unionRelease),
   'union',
 );
+const availability = JSON.parse(
+  readFileSync('lib/text-availability.json', 'utf8'),
+);
+const available = {
+  abstracts: new Set<string>(
+    availability.abstracts.map((id: string) => availability.id_prefix + id),
+  ),
+  fulltext: new Set<string>(
+    availability.fulltext.map((id: string) => availability.id_prefix + id),
+  ),
+};
+const fullPayload = JSON.parse(
+  readFileSync('public/data/positions-fulltext.json', 'utf8'),
+);
+const fullRelease = JSON.parse(
+  readFileSync('lib/fulltext-release.json', 'utf8'),
+);
+const fulltext = abstractMap(
+  data,
+  validateFulltextPositions(fullPayload, available.fulltext),
+  'fulltext',
+);
+assert.equal(fulltext.points.length, 2091);
+assert.equal(fulltext.cohort.coverage.bertopic, 423);
+const fullBytes = new Uint8Array(
+  readFileSync('public/data/positions-fulltext.json'),
+);
+await verifyPositionBytes(fullBytes.buffer, fullRelease.sha256, 'Full-text');
+for (const invalid of [
+  null,
+  {},
+  { ...fullPayload, ids: fullPayload.ids.slice(1) },
+  { ...fullPayload, ids: fullPayload.ids.map(() => fullPayload.ids[0]) },
+  {
+    ...fullPayload,
+    coordinates2d: fullPayload.coordinates2d.map(() => [NaN, 0]),
+  },
+  {
+    ...fullPayload,
+    ids: fullPayload.ids.map((id: string, i: number) => (i ? id : 'unknown')),
+  },
+])
+  assert.throws(
+    () => validateFulltextPositions(invalid, available.fulltext),
+    /do not match/,
+  );
+const countsBySource = [
+  [data, [7076, 2100, 2091, 423, 1677, 1668]],
+  [abstracts, [2057, 2057, 423, 423, 1634, 0]],
+  [union, [3725, 2057, 2091, 423, 1634, 1668]],
+  [fulltext, [2091, 423, 2091, 423, 0, 1668]],
+] as const;
+for (const [base, expected] of countsBySource) {
+  const before = JSON.stringify(base);
+  assert.deepEqual(
+    TEXT_FILTERS.map(
+      ({ value }) => textFilterCounts(base.points, available)[value],
+    ),
+    [...expected],
+  );
+  for (const { value } of TEXT_FILTERS) {
+    const subset = subsetMap(
+      base,
+      base.points.filter((p) => matchesText(p.id, value, available)),
+    );
+    assert.equal(
+      subset.geometry,
+      base.geometry,
+      'Filtering never changes coordinate bounds or framing',
+    );
+    for (const p of subset.points) {
+      const original = base.points.find((q) => q.id === p.id)!;
+      assert.deepEqual([p.i, p.x, p.y], [original.i, original.x, original.y]);
+      assert.equal(
+        p.coauthor_count,
+        subset.points.filter(
+          (q) => q.id !== p.id && p.authors.some((a) => q.authors.includes(a)),
+        ).length,
+      );
+    }
+    assert.equal(subset.cohort.n, subset.points.length);
+    assert.equal(
+      subset.cohort.coverage.bertopic,
+      subset.points.filter((p) => p.bertopic !== undefined).length,
+    );
+  }
+  assert.equal(
+    JSON.stringify(base),
+    before,
+    'Filtering must not mutate a position cohort',
+  );
+}
 assert.equal(union.points.length, unionRelease.count);
 assert.equal(union.cohort.coverage.bertopic, 2057);
 assert.equal(union.cohort.coverage.lda, 2051);

@@ -1,13 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 import { PaperMap } from '@/components/atlas/paper-map';
 import { DataLoading } from '@/components/atlas/data-state';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Sheet,
@@ -33,13 +38,32 @@ import { decodeHtmlEntities } from '@/lib/display-text';
 import { facetGroup, topicGroup, type PaperGroup } from '@/lib/paper-selection';
 import {
   abstractMap,
+  subsetMap,
   validateAbstractPositions,
+  validateFulltextPositions,
   validateUnionPositions,
   verifyPositionBytes,
   type AbstractPositions,
   type PositionSource,
 } from '@/lib/paper-positions';
 import unionRelease from '@/lib/union-release.json';
+import fulltextRelease from '@/lib/fulltext-release.json';
+import textAvailability from '@/lib/text-availability.json';
+import {
+  matchesText,
+  textFilterCounts,
+  TEXT_FILTERS,
+  type TextFilter,
+} from '@/lib/paper-text-filter';
+
+const availableText = {
+  abstracts: new Set(
+    textAvailability.abstracts.map((id) => textAvailability.id_prefix + id),
+  ),
+  fulltext: new Set(
+    textAvailability.fulltext.map((id) => textAvailability.id_prefix + id),
+  ),
+};
 
 export type RelationState = { all: Set<string>; shared: Map<string, string[]> };
 export type FacetSelections = Record<
@@ -195,9 +219,68 @@ function FacetControls({
   );
 }
 
+function TextFilterControl({
+  value,
+  counts,
+  onChange,
+}: {
+  value: TextFilter;
+  counts: Record<TextFilter, number>;
+  onChange: (value: TextFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = TEXT_FILTERS.find((item) => item.value === value)!.label;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            aria-label={`Text availability: ${label}`}
+            className={`mt-2 h-8 w-full justify-start gap-2 rounded-none px-2 text-sm shadow-none ${value !== 'all' ? 'border-primary text-primary' : ''}`}
+          />
+        }
+      >
+        <Filter className="size-3.5 shrink-0" />
+        <span className="min-w-0 truncate">Text: {label}</span>
+        <span className="ml-auto font-mono text-xs tabular-nums">
+          {counts[value].toLocaleString()}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[264px] max-w-[calc(100vw-24px)] gap-0 rounded-none p-1"
+        aria-label="Text availability filter"
+      >
+        <fieldset className="min-w-0" aria-label="Available text">
+          {TEXT_FILTERS.map((item) => (
+            <button
+              key={item.value}
+              aria-pressed={value === item.value}
+              className={`flex min-h-9 w-full items-center justify-between gap-3 border-l-2 px-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring ${value === item.value ? 'border-primary bg-primary/10 text-primary' : 'border-transparent hover:bg-muted'}`}
+              onClick={() => {
+                onChange(item.value);
+                setOpen(false);
+              }}
+            >
+              <span>{item.label}</span>
+              <span className="font-mono text-xs tabular-nums">
+                {counts[item.value].toLocaleString()}
+              </span>
+            </button>
+          ))}
+        </fieldset>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function LensControls({
   data,
   positions,
+  textFilter,
+  textCounts,
+  onTextFilter,
   catalogueCount,
   abstractCount,
   onPositions,
@@ -215,6 +298,9 @@ function LensControls({
 }: {
   data: MapData;
   positions: PositionSource;
+  textFilter: TextFilter;
+  textCounts: Record<TextFilter, number>;
+  onTextFilter: (value: TextFilter) => void;
   catalogueCount: number;
   abstractCount: number;
   onPositions: (source: PositionSource) => void;
@@ -262,6 +348,9 @@ function LensControls({
             <option value="abstracts">
               Abstracts ({abstractCount.toLocaleString()} papers)
             </option>
+            <option value="fulltext">
+              Full text ({fulltextRelease.count.toLocaleString()} papers)
+            </option>
             <option
               value="union"
               disabled={!/^[a-f0-9]{64}$/.test(unionRelease.sha256)}
@@ -271,6 +360,11 @@ function LensControls({
             </option>
           </select>
         </label>
+        <TextFilterControl
+          value={textFilter}
+          counts={textCounts}
+          onChange={onTextFilter}
+        />
         {positionError ? (
           <p role="alert" className="mt-2 text-sm text-destructive">
             {positionError}{' '}
@@ -435,9 +529,12 @@ function buildRelation(
 
 function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   const [positions, setPositions] = useState<PositionSource>('titles');
+  const [textFilter, setTextFilter] = useState<TextFilter>('all');
   const [abstractPositions, setAbstractPositions] =
     useState<AbstractPositions | null>(null);
   const [unionPositions, setUnionPositions] =
+    useState<AbstractPositions | null>(null);
+  const [fulltextPositions, setFulltextPositions] =
     useState<AbstractPositions | null>(null);
   const [failedPositions, setFailedPositions] =
     useState<PositionSource>('abstracts');
@@ -453,17 +550,51 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       unionPositions ? abstractMap(catalogue, unionPositions, 'union') : null,
     [catalogue, unionPositions],
   );
+  const fulltextData = useMemo(
+    () =>
+      fulltextPositions
+        ? abstractMap(catalogue, fulltextPositions, 'fulltext')
+        : null,
+    [catalogue, fulltextPositions],
+  );
   const loadedData =
     positions === 'abstracts'
       ? abstractData
       : positions === 'union'
         ? unionData
-        : catalogue;
-  const data = loadedData ?? catalogue;
-  const activePositions = data === catalogue ? 'titles' : positions;
+        : positions === 'fulltext'
+          ? fulltextData
+          : catalogue;
+  const positionData = loadedData ?? catalogue;
+  const activePositions = positionData === catalogue ? 'titles' : positions;
+  const textCounts = useMemo(
+    () => textFilterCounts(positionData.points, availableText),
+    [positionData],
+  );
+  const data = useMemo(
+    () =>
+      textFilter === 'all'
+        ? positionData
+        : subsetMap(
+            positionData,
+            positionData.points.filter((p) =>
+              matchesText(p.id, textFilter, availableText),
+            ),
+          ),
+    [positionData, textFilter],
+  );
+  const visibleIds = useMemo(
+    () => (textFilter === 'all' ? null : new Set(data.points.map((p) => p.id))),
+    [data, textFilter],
+  );
   useEffect(() => {
     if (positions === 'titles' || loadedData) return;
-    const label = positions === 'union' ? 'Combined-text' : 'Abstract';
+    const label =
+      positions === 'union'
+        ? 'Combined-text'
+        : positions === 'fulltext'
+          ? 'Full-text'
+          : 'Abstract';
     const fail = (message: string) => {
       setPositionError(message);
       setFailedPositions(positions);
@@ -483,6 +614,13 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
         if (positions === 'abstracts')
           return validateAbstractPositions(await response.json(), catalogue);
         const bytes = await response.arrayBuffer();
+        if (positions === 'fulltext') {
+          await verifyPositionBytes(bytes, fulltextRelease.sha256, 'Full-text');
+          return validateFulltextPositions(
+            JSON.parse(new TextDecoder().decode(bytes)),
+            availableText.fulltext,
+          );
+        }
         await verifyPositionBytes(bytes, unionRelease.sha256);
         return validateUnionPositions(
           JSON.parse(new TextDecoder().decode(bytes)),
@@ -493,6 +631,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       .then((payload) => {
         if (!controller.signal.aborted) {
           if (positions === 'abstracts') setAbstractPositions(payload);
+          else if (positions === 'fulltext') setFulltextPositions(payload);
           else setUnionPositions(payload);
         }
       })
@@ -672,6 +811,9 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
     <LensControls
       data={data}
       positions={positions}
+      textFilter={textFilter}
+      textCounts={textCounts}
+      onTextFilter={setTextFilter}
       catalogueCount={catalogue.cohort.n}
       abstractCount={catalogue.cohort.coverage.bertopic}
       onPositions={(source) => {
@@ -732,11 +874,17 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
         aria-label="Paper atlas"
       >
         <PaperMap
-          data={data}
+          data={positionData}
+          displayData={data}
+          visibleIds={visibleIds}
           positionSource={activePositions}
           textCoordinates={
-            (activePositions === 'union' ? unionPositions : abstractPositions)
-              ?.coordinates3d ?? null
+            (activePositions === 'fulltext'
+              ? fulltextPositions
+              : activePositions === 'union'
+                ? unionPositions
+                : abstractPositions
+            )?.coordinates3d ?? null
           }
           hasSelection={!!group || !!selectedId}
           lens={lens}
@@ -750,8 +898,24 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
         />
         {!loadedData ? (
           <output className="absolute inset-0 z-40 grid place-items-center bg-[var(--map-background)] text-sm text-white">
-            Loading {positions === 'union' ? 'combined-text' : 'abstract'}{' '}
+            Loading{' '}
+            {positions === 'union'
+              ? 'combined-text'
+              : positions === 'fulltext'
+                ? 'full-text'
+                : 'abstract'}{' '}
             positions…
+          </output>
+        ) : null}
+        {loadedData && data.points.length === 0 ? (
+          <output className="absolute inset-x-4 top-32 z-20 mx-auto w-fit border border-white/20 bg-[#11151a] px-4 py-3 text-sm text-white">
+            No papers match this text filter in the current position view.
+            <button
+              className="ml-2 underline"
+              onClick={() => setTextFilter('all')}
+            >
+              Clear text filter
+            </button>
           </output>
         ) : null}
         {group ? (
@@ -768,7 +932,8 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                 {group.ids.size > mappedSelectionCount ? (
                   <span className="text-white/65">
                     {' '}
-                    · {mappedSelectionCount.toLocaleString()} mapped
+                    · {mappedSelectionCount.toLocaleString()}{' '}
+                    {textFilter === 'all' ? 'mapped' : 'shown'}
                   </span>
                 ) : null}
               </p>
@@ -894,17 +1059,21 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                   <span>{selected.journal || 'Unavailable'}</span>
                   <span className="text-muted-foreground">Publisher</span>
                   <span>{selected.publisher || 'Unavailable'}</span>
-                  {activePositions === 'union' ? (
+                  {activePositions === 'union' ||
+                  activePositions === 'fulltext' ? (
                     <>
                       <span className="text-muted-foreground">
                         Position text
                       </span>
                       <span>
-                        {unionPositions?.sources?.[selected.i] === 'abstract'
-                          ? 'Abstract'
-                          : unionPositions?.sources?.[selected.i] === 'fulltext'
-                            ? 'Sampled full text'
-                            : 'Unavailable'}
+                        {activePositions === 'fulltext'
+                          ? 'Sampled full text'
+                          : unionPositions?.sources?.[selected.i] === 'abstract'
+                            ? 'Abstract'
+                            : unionPositions?.sources?.[selected.i] ===
+                                'fulltext'
+                              ? 'Sampled full text'
+                              : 'Unavailable'}
                       </span>
                     </>
                   ) : null}

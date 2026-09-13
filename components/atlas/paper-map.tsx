@@ -38,6 +38,8 @@ function interpolateStops(value: number, stops: readonly string[]) {
 
 export function PaperMap({
   data,
+  displayData,
+  visibleIds,
   positionSource,
   textCoordinates,
   hasSelection,
@@ -51,6 +53,8 @@ export function PaperMap({
   colourSlots,
 }: {
   data: MapData;
+  displayData: MapData;
+  visibleIds: ReadonlySet<string> | null;
   positionSource: PositionSource;
   textCoordinates: Vec3[] | null;
   hasSelection: boolean;
@@ -103,8 +107,12 @@ export function PaperMap({
     [selections],
   );
   const maxCoauthor = useMemo(
-    () => Math.max(1, ...data.points.map((p) => p.coauthor_count)),
-    [data.points],
+    () => Math.max(1, ...displayData.points.map((p) => p.coauthor_count)),
+    [displayData.points],
+  );
+  const coauthorCounts = useMemo(
+    () => new Map(displayData.points.map((p) => [p.id, p.coauthor_count])),
+    [displayData.points],
   );
   const agreementScale = useMemo(() => {
     const values = data.points
@@ -185,7 +193,8 @@ export function PaperMap({
           : {
               colours: [
                 interpolateStops(
-                  Math.log1p(paper.coauthor_count) / Math.log1p(maxCoauthor),
+                  Math.log1p(coauthorCounts.get(paper.id) ?? 0) /
+                    Math.log1p(maxCoauthor),
                   ['#274060', '#00a9b7', '#ffe34d'],
                 ),
               ],
@@ -194,6 +203,7 @@ export function PaperMap({
     [
       agreementScale,
       colourSlots,
+      coauthorCounts,
       data.points,
       lens,
       maxCoauthor,
@@ -201,7 +211,7 @@ export function PaperMap({
       topicColours,
     ],
   );
-  const visual = { marks, group, selectedId: selected?.id ?? null };
+  const visual = { marks, group, selectedId: selected?.id ?? null, visibleIds };
   const callbacks = {
     select: onSelect,
     hover: setHovered,
@@ -303,7 +313,7 @@ export function PaperMap({
         ref={canvasRef}
         data-position-source={positionSource}
         tabIndex={0}
-        aria-label={`${dimension === '3d' && coordinates ? '3D' : '2D'} semantic map of ${data.cohort.n.toLocaleString()} papers`}
+        aria-label={`${dimension === '3d' && coordinates ? '3D' : '2D'} semantic map of ${displayData.cohort.n.toLocaleString()} papers`}
         aria-describedby="map-keyboard-help"
         className="block h-full w-full touch-none cursor-grab focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-200"
       />

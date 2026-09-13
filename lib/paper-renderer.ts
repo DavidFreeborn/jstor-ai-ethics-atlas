@@ -31,6 +31,7 @@ type VisualState = {
   marks: PaperMark[];
   group: PaperGroup | null;
   selectedId: string | null;
+  visibleIds?: ReadonlySet<string> | null;
 };
 type Pointer = XY & { origin: XY; moved: boolean; pan: boolean };
 type Projected = XY & { index: number; depth: number; visible: boolean };
@@ -135,8 +136,13 @@ export class PaperRenderer {
     );
   }
   setVisual(visual: VisualState, callbacks: Callbacks) {
+    const filterChanged = this.visual.visibleIds !== visual.visibleIds;
     this.visual = visual;
     this.callbacks = callbacks;
+    if (filterChanged) {
+      this.projectionDirty = true;
+      this.cancel();
+    }
     this.request();
   }
   setData(data: MapData, positionSource: string) {
@@ -269,6 +275,13 @@ export class PaperRenderer {
       basis = this.camera3 ? basis3D(this.camera3) : null;
     this.drawOrder.length = 0;
     for (const p of this.projected) {
+      if (
+        this.visual.visibleIds &&
+        !this.visual.visibleIds.has(this.data.points[p.index].id)
+      ) {
+        p.visible = false;
+        continue;
+      }
       const position =
         this.dimension === '3d' && this.coordinates3 && this.camera3 && basis
           ? project3D(
@@ -428,6 +441,10 @@ export class PaperRenderer {
         selected: group?.ids.size ?? 0,
         selectionHash: group ? groupFingerprint(group.ids) : null,
         papers: this.data.points.length,
+        eligiblePapers: this.visual.visibleIds?.size ?? this.data.points.length,
+        eligibleHash: this.visual.visibleIds
+          ? groupFingerprint(new Set(this.visual.visibleIds))
+          : null,
         positionSource: this.positionSource,
         pointers: this.pointers.size,
         backingPixels: this.canvas.width * this.canvas.height,

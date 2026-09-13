@@ -27,6 +27,15 @@ const unionPositions = JSON.parse(
   await readFile('public/data/positions-union.json', 'utf8'),
 );
 const unionIds = new Set(unionPositions.ids);
+const fulltextIds = new Set(
+  JSON.parse(await readFile('public/data/positions-fulltext.json', 'utf8')).ids,
+);
+const availability = JSON.parse(
+  await readFile('lib/text-availability.json', 'utf8'),
+);
+const rawAbstractIds = new Set(
+  availability.abstracts.map((id) => availability.id_prefix + id),
+);
 const hash = (ids) => {
   let h = 2166136261;
   for (const id of [...ids].sort())
@@ -116,6 +125,7 @@ try {
   assert.deepEqual(await positionPicker.locator('option').allTextContents(), [
     'Titles (7,076 papers)',
     'Abstracts (2,057 papers)',
+    'Full text (2,091 papers)',
     'Abstracts ∪ full text (3,725 papers)',
   ]);
   assert.equal(
@@ -191,8 +201,8 @@ try {
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await tick();
   assert.deepEqual((await stats()).camera, abstract2d.camera);
-  for (let i = 0; i < 12; i++)
-    await switchPositions(['titles', 'abstracts', 'union'][i % 3]);
+  for (let i = 0; i < 16; i++)
+    await switchPositions(['titles', 'abstracts', 'union', 'fulltext'][i % 4]);
   await switchPositions('union');
   assert.deepEqual((await stats()).camera, union2d.camera);
   await page.getByRole('button', { name: '3D', exact: true }).click();
@@ -255,7 +265,7 @@ try {
   await page.getByRole('button', { name: 'Deselect papers' }).click();
   await page.getByRole('button', { name: /^All papers/ }).click();
   report.checks.push(
-    'All three position modes: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
+    'All four position modes: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
   );
   await switchPositions('union');
   const fulltextPaper = data.points.find(
@@ -283,6 +293,198 @@ try {
   await switchPositions('titles');
   report.checks.push(
     'Full-text paper provenance is explicit; paper selection survives a temporarily absent cohort',
+  );
+  // Text coverage is a visibility mask, never a new projection or camera reset.
+  const changeTextFilter = async (label, count) => {
+    await page.getByRole('button', { name: /^Text availability:/ }).click();
+    await page
+      .getByRole('group', { name: 'Available text', exact: true })
+      .getByRole('button')
+      .filter({ hasText: label })
+      .click();
+    await page.waitForFunction(
+      (count) =>
+        JSON.parse(document.querySelector('canvas').dataset.renderer)
+          .eligiblePapers === count,
+      count,
+    );
+    await tick();
+    await page
+      .getByRole('group', { name: 'Available text', exact: true })
+      .waitFor({ state: 'hidden' });
+  };
+  const filterDefinitions = [
+    ['Has abstract', (id) => rawAbstractIds.has(id)],
+    ['Has full text', (id) => fulltextIds.has(id)],
+    ['Has both (∩)', (id) => rawAbstractIds.has(id) && fulltextIds.has(id)],
+    ['Abstract only', (id) => rawAbstractIds.has(id) && !fulltextIds.has(id)],
+    ['Full text only', (id) => fulltextIds.has(id) && !rawAbstractIds.has(id)],
+    ['All papers', () => true],
+  ];
+  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('button')
+    .filter({ hasText: positionTopic.label })
+    .click();
+  await tick();
+  const heldSelection = (await stats()).selectionHash;
+  for (const [source, ids] of [
+    ['titles', new Set(data.points.map((p) => p.id))],
+    ['abstracts', abstractIds],
+    ['union', unionIds],
+    ['fulltext', fulltextIds],
+  ]) {
+    await switchPositions(source);
+    await page.getByRole('button', { name: '3D', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('canvas').dataset.renderer)
+          .dimension === '3d',
+    );
+    const before = await stats();
+    for (const [label, matches] of filterDefinitions) {
+      const expected = [...ids].filter(matches);
+      await changeTextFilter(label, expected.length);
+      const filtered = await stats();
+      assert.deepEqual(filtered.camera, before.camera);
+      assert.equal(filtered.allocations, before.allocations);
+      assert.equal(filtered.selectionHash, heldSelection);
+      assert.equal(
+        filtered.eligibleHash,
+        label === 'All papers' ? null : hash(expected),
+      );
+      if (!expected.length) {
+        assert.equal(filtered.visible, 0);
+        assert(
+          await page
+            .getByRole('button', { name: 'Clear text filter', exact: true })
+            .isVisible(),
+        );
+        await page
+          .getByRole('button', { name: 'Clear text filter', exact: true })
+          .click();
+        await tick();
+        assert.equal((await stats()).eligiblePapers, ids.size);
+        assert.deepEqual((await stats()).camera, before.camera);
+      }
+    }
+    await page.getByRole('button', { name: '2D', exact: true }).click();
+    await tick();
+    const before2d = await stats();
+    await changeTextFilter('Has both (∩)', 423);
+    assert.deepEqual((await stats()).camera, before2d.camera);
+    await page.getByRole('button', { name: 'Fit all', exact: true }).click();
+    await tick();
+    assert.equal((await stats()).visible, 423);
+    await changeTextFilter('All papers', ids.size);
+  }
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await page.getByRole('button', { name: /^Publisher/ }).click();
+  await page.getByRole('button', { name: 'Reset view', exact: true }).click();
+  await page.screenshot({ path: `${output}/fulltext-2d.png` });
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await tick();
+  const fullCamera = (await stats()).camera;
+  await changeTextFilter('Has both (∩)', 423);
+  await page.screenshot({ path: `${output}/fulltext-both-3d.png` });
+  await switchPositions('titles');
+  assert.equal((await stats()).eligiblePapers, 423);
+  await switchPositions('fulltext');
+  assert.deepEqual((await stats()).camera, fullCamera);
+  await changeTextFilter('All papers', 2091);
+  await page
+    .getByRole('textbox', { name: 'Search papers' })
+    .fill(fulltextPaper.title);
+  await page
+    .getByRole('list', { name: 'Search results' })
+    .getByRole('button')
+    .first()
+    .click();
+  await page.getByText('Sampled full text', { exact: true }).waitFor();
+  await changeTextFilter('Has both (∩)', 423);
+  assert.equal(
+    await page.getByRole('button', { name: 'Close paper details' }).count(),
+    0,
+  );
+  await changeTextFilter('All papers', 2091);
+  await page.getByText('Sampled full text', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  await page.getByRole('button', { name: /^All papers/ }).click();
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await switchPositions('titles');
+  await page.getByRole('button', { name: 'Reset view', exact: true }).click();
+  await changeTextFilter('Has both (∩)', 423);
+  const maskBounds = await canvas.boundingBox(),
+    maskCamera = (await stats()).camera,
+    maskScale =
+      Math.min(
+        (maskBounds.width - 60) /
+          (data.geometry.bounds.x[1] - data.geometry.bounds.x[0]),
+        (maskBounds.height - 60) /
+          (data.geometry.bounds.y[1] - data.geometry.bounds.y[0]),
+      ) * maskCamera.zoom,
+    screenPoints = data.points.map((p) => ({
+      id: p.id,
+      x: maskBounds.x + maskBounds.width / 2 + (p.x - maskCamera.x) * maskScale,
+      y:
+        maskBounds.y + maskBounds.height / 2 - (p.y - maskCamera.y) * maskScale,
+    })),
+    bothPoints = screenPoints.filter(
+      (p) => rawAbstractIds.has(p.id) && fulltextIds.has(p.id),
+    ),
+    box = {
+      left: Math.round(maskBounds.x + maskBounds.width * 0.3),
+      right: Math.round(maskBounds.x + maskBounds.width * 0.6),
+      top: Math.round(maskBounds.y + maskBounds.height * 0.3),
+      bottom: Math.round(maskBounds.y + maskBounds.height * 0.6),
+    },
+    boxed = bothPoints.filter(
+      (p) =>
+        p.x >= box.left &&
+        p.x <= box.right &&
+        p.y >= box.top &&
+        p.y <= box.bottom,
+    );
+  assert(boxed.length > 0);
+  await page.getByRole('button', { name: 'Select area', exact: true }).click();
+  await page.mouse.move(box.left, box.top);
+  await page.mouse.down();
+  await page.mouse.move(box.right, box.bottom, { steps: 10 });
+  await page.mouse.up();
+  await tick();
+  assert.equal((await stats()).selectionHash, hash(boxed.map((p) => p.id)));
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
+  const hiddenPoint = screenPoints.find(
+    (p) =>
+      !fulltextIds.has(p.id) &&
+      p.x > box.left &&
+      p.x < box.right &&
+      p.y > box.top &&
+      p.y < box.bottom &&
+      bothPoints.every(
+        (shown) => Math.hypot(shown.x - p.x, shown.y - p.y) > 15,
+      ),
+  );
+  assert(
+    hiddenPoint,
+    'An isolated masked point is available for hit-test regression',
+  );
+  await page.mouse.click(hiddenPoint.x, hiddenPoint.y);
+  await tick();
+  assert.equal(
+    await page.getByRole('button', { name: 'Close paper details' }).count(),
+    0,
+  );
+  await page.getByRole('button', { name: /^Text availability:/ }).click();
+  await page.screenshot({
+    path: `${output}/text-filter-options.png`,
+    animations: 'disabled',
+  });
+  await page.keyboard.press('Escape');
+  await changeTextFilter('All papers', 7076);
+  report.checks.push(
+    'All six text filters in all four position modes: exact ID masks, fixed cameras, no reallocations, persistent selections, empty-state recovery, masked box selection/hit testing and full-text provenance',
   );
   // Same-task moves followed by pointer-up reproduced the null-reference failure on BOTH old live hosts.
   let bounds = await canvas.boundingBox();
@@ -685,18 +887,31 @@ try {
     const bounds = dialog.getBoundingClientRect();
     return bounds.top >= 15 && bounds.bottom <= innerHeight - 15;
   });
-  const methodsDialog = page.getByRole('dialog', { name: 'Methodology', exact: true });
+  const methodsDialog = page.getByRole('dialog', {
+    name: 'Methodology',
+    exact: true,
+  });
   const methodsBounds = await methodsDialog.boundingBox();
-  assert(methodsBounds.y >= 15 && methodsBounds.y + methodsBounds.height <= 553);
-  await methodsDialog.evaluate((dialog) => dialog.scrollTo(0, dialog.scrollHeight));
-  assert(await methodsDialog.getByRole('heading', { name: 'Matrices', exact: true }).isVisible());
+  assert(
+    methodsBounds.y >= 15 && methodsBounds.y + methodsBounds.height <= 553,
+  );
+  await methodsDialog.evaluate((dialog) =>
+    dialog.scrollTo(0, dialog.scrollHeight),
+  );
+  assert(
+    await methodsDialog
+      .getByRole('heading', { name: 'Matrices', exact: true })
+      .isVisible(),
+  );
   await page.screenshot({
     path: `${output}/mobile-methodology.png`,
     animations: 'disabled',
   });
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1440, height: 900 });
-  report.checks.push('Methodology stays within a 320×568 viewport and its final section remains reachable');
+  report.checks.push(
+    'Methodology stays within a 320×568 viewport and its final section remains reachable',
+  );
   // An invalid optional asset must leave a working 2D renderer and offer a genuine retry.
   await page.route('**/projection-3d.json', (route) =>
     route.fulfill({
@@ -764,6 +979,34 @@ try {
   await positionPicker.selectOption('titles');
   report.checks.push(
     'Combined-text asset integrity failure leaves the map usable; retry restores the correct union',
+  );
+  await page.route('**/positions-fulltext.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '{"ids":[]}',
+    }),
+  );
+  await page.reload();
+  await canvas.waitFor();
+  await positionPicker.selectOption('fulltext');
+  await page
+    .getByRole('alert')
+    .filter({
+      hasText: 'Full-text positions failed the release integrity check.',
+    })
+    .waitFor();
+  assert.equal(await positionPicker.inputValue(), 'titles');
+  await page.unroute('**/positions-fulltext.json');
+  await page
+    .getByRole('button', { name: 'Retry positions', exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector('canvas')?.dataset.positionSource === 'fulltext',
+  );
+  report.checks.push(
+    'Corrupt full-text positions are isolated and retry recovers the exact cohort',
   );
   // Repeated unmounts must not leak document listeners, canvases, or retained atlas heaps.
   const cdp =
@@ -864,6 +1107,26 @@ try {
       () =>
         document.querySelector('canvas')?.dataset.positionSource === 'union',
     );
+    await mobile.getByRole('button', { name: /^Text availability:/ }).tap();
+    await mobile
+      .getByRole('group', { name: 'Available text', exact: true })
+      .getByRole('button')
+      .filter({ hasText: 'Has both (∩)' })
+      .tap();
+    await mobile
+      .getByRole('combobox', { name: 'Positions', exact: true })
+      .selectOption('fulltext');
+    await mobile.waitForFunction(() => {
+      const c = document.querySelector('canvas');
+      return (
+        c?.dataset.positionSource === 'fulltext' &&
+        JSON.parse(c.dataset.renderer).eligiblePapers === 423
+      );
+    });
+    await mobile.screenshot({
+      path: `${output}/mobile-text-filter.png`,
+      animations: 'disabled',
+    });
     await mobile.keyboard.press('Escape');
     await mobile
       .getByRole('dialog', { name: 'Lens', exact: true })

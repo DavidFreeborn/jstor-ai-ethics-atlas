@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "papers": 2091,
+  "output_sha256": "6d955b830bdb0c4ecd4f641837e2cf8b48dac014ab4693517ff6f6eec48fd1b8",
+  "source_sha256": "2682d15688ce3291dcae726c77c7c01b067554a2430b40ff4c942ea51c0e4dd5",
+  "union_vectors_sha256": "1e968997eaa99b74b204b4b91e83eaad12e5cc6e763141d545f6be410495e13f",
+  "paired_fulltext_vectors_sha256": "fc365e9f81c77119a25e96ff0d6c86e896f786d4d6ecd616ab5db698160bd960",
+  "raw_catalogue_sha256": "73047223abb1956c7482979a243785835543646733fb6a910cf78435de773a74",
+  "input_sha256": "b8c9706fc06e53267f967692690546565aa4451d0618e7471886530652ec8d33",
+  "availability_sha256": "9dd7385640c972d88fe15fe0d16a55158f247dac6398d2ead0872466abc0723c",
+  "excluded_abstract_audit_sha256": "a05c1d267217bb33cae079675760e3cde586332ba07badfd2eac0e3a6551839e",
+  "pipeline_sha256": "20670d27fd9588557993e71f33ebff538250acfe89ac339bb63e3cc8e47f760a",
+  "availability": {
+    "abstracts": 2100,
+    "fulltext": 2091,
+    "both": 423,
+    "abstract_only": 1677,
+    "fulltext_only": 1668,
+    "neither": 3308
+  },
+  "encoder": {
+    "model": "allenai/specter",
+    "revision": "81cbfb43d4fc2e728d5b4201ce14987db8d0854c",
+    "body_tokens": 448,
+    "title_tokens": 32,
+    "pooling": "token-weighted unit CLS mean within passages; equal passage mean; unit document vector",
+    "dtype": "float32",
+    "input_sha256": "b8c9706fc06e53267f967692690546565aa4451d0618e7471886530652ec8d33"
+  },
+  "parameters": {
+    "n_neighbors": 30,
+    "min_dist": 0.08,
+    "metric": "cosine",
+    "n_jobs": 1,
+    "random_state": 42
+  },
+  "audit": {
+    "2": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.928579,
+        "neighbour_recall_15": 0.344939,
+        "neighbour_recall_30": 0.369185,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.93158,
+        "neighbour_recall_15": 0.346788,
+        "neighbour_recall_30": 0.372549,
+        "seed_neighbour_overlap_15": 0.700048
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.929775,
+        "neighbour_recall_15": 0.344269,
+        "neighbour_recall_30": 0.372421,
+        "seed_neighbour_overlap_15": 0.679962
+      }
+    ],
+    "3": [
+      {
+        "seed": 42,
+        "trustworthiness_15": 0.952455,
+        "neighbour_recall_15": 0.394803,
+        "neighbour_recall_30": 0.409868,
+        "seed_neighbour_overlap_15": 1.0
+      },
+      {
+        "seed": 43,
+        "trustworthiness_15": 0.952613,
+        "neighbour_recall_15": 0.396015,
+        "neighbour_recall_30": 0.411191,
+        "seed_neighbour_overlap_15": 0.794835
+      },
+      {
+        "seed": 44,
+        "trustworthiness_15": 0.952916,
+        "neighbour_recall_15": 0.394293,
+        "neighbour_recall_30": 0.413327,
+        "seed_neighbour_overlap_15": 0.795218
+      }
+    ]
+  },
+  "source_composition": {
+    "fulltext_only": 1668,
+    "paired_fulltext": 423,
+    "abstract_vectors": 0
+  },
+  "software": {
+    "numpy": "2.4.2",
+    "sklearn": "1.8.0",
+    "umap": "0.5.11"
+  },
+  "limitations": [
+    "Text availability is not embedding eligibility: 2,100 nonempty abstracts exist, but only 2,057 have released abstract positions.",
+    "Full-text positions reuse at most eight sampled 256-word passages, not exhaustive whole-document encoding.",
+    "SPECTER was trained on titles and abstracts; its full-text application is exploratory.",
+    "The full-text cohort differs in source and document type. A separate fit is not an isolated comparison of document lengths.",
+    "The Both filter selects shared records without refitting or moving them; it is not an additional embedding model.",
+    "Existing topic assignments and correlation-matrix cohorts remain unchanged."
+  ]
+}

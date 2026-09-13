@@ -1,7 +1,7 @@
 import type { FacetValue, MapData, PaperPoint } from './atlas-types';
 import type { Vec3 } from './map-camera';
 
-export type PositionSource = 'titles' | 'abstracts' | 'union';
+export type PositionSource = 'titles' | 'abstracts' | 'union' | 'fulltext';
 export type AbstractPositions = {
   version: number;
   ids: string[];
@@ -23,15 +23,14 @@ export type UnionRelease = {
 export async function verifyPositionBytes(
   bytes: ArrayBuffer,
   expected: string,
+  label = 'Combined-text',
 ) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const actual = [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   if (actual !== expected)
-    throw new Error(
-      'Combined-text positions failed the release integrity check.',
-    );
+    throw new Error(`${label} positions failed the release integrity check.`);
 }
 
 export function validateUnionPositions(
@@ -118,18 +117,12 @@ export function validateAbstractPositions(
   return p;
 }
 
-export function abstractMap(
+export function subsetMap(
   catalogue: MapData,
-  positions: AbstractPositions,
-  source: 'abstracts' | 'union' = 'abstracts',
+  selectedPoints: PaperPoint[],
+  label = catalogue.cohort.label,
 ): MapData {
-  const byId = new Map(catalogue.points.map((p) => [p.id, p]));
-  const points = positions.ids.map((id, i) => ({
-    ...byId.get(id)!,
-    i,
-    x: positions.coordinates2d[i][0],
-    y: positions.coordinates2d[i][1],
-  }));
+  const points = selectedPoints.map((p) => ({ ...p }));
   const authors = new Map<string, Set<string>>();
   for (const p of points)
     for (const author of p.authors) {
@@ -181,8 +174,7 @@ export function abstractMap(
     },
     cohort: {
       ...catalogue.cohort,
-      label:
-        source === 'union' ? 'Abstract and full-text union' : 'Abstract cohort',
+      label,
       n: points.length,
       coverage: {
         bertopic: count((p) => p.bertopic !== undefined),
@@ -194,6 +186,35 @@ export function abstractMap(
         authors: count((p) => p.authors.length > 0),
       },
     },
+    facets: {
+      ...catalogue.facets,
+      publishers: facet(catalogue.facets.publishers, 'publisher'),
+      journals: facet(catalogue.facets.journals, 'journal'),
+      keywords: facet(catalogue.facets.keywords, 'keywords'),
+    },
+  };
+}
+
+export function abstractMap(
+  catalogue: MapData,
+  positions: AbstractPositions,
+  source: Exclude<PositionSource, 'titles'> = 'abstracts',
+): MapData {
+  const byId = new Map(catalogue.points.map((p) => [p.id, p]));
+  const points = positions.ids.map((id, i) => ({
+    ...byId.get(id)!,
+    i,
+    x: positions.coordinates2d[i][0],
+    y: positions.coordinates2d[i][1],
+  }));
+  const label =
+    source === 'union'
+      ? 'Abstract and full-text union'
+      : source === 'fulltext'
+        ? 'Full-text cohort'
+        : 'Abstract cohort';
+  return {
+    ...subsetMap(catalogue, points, label),
     geometry: {
       ...catalogue.geometry,
       embedding: positions.embedding,
@@ -213,11 +234,36 @@ export function abstractMap(
       interpretation:
         'Local proximity approximates text-semantic neighbourhoods; global spacing is not a semantic distance.',
     },
-    facets: {
-      ...catalogue.facets,
-      publishers: facet(catalogue.facets.publishers, 'publisher'),
-      journals: facet(catalogue.facets.journals, 'journal'),
-      keywords: facet(catalogue.facets.keywords, 'keywords'),
-    },
   };
+}
+
+export function validateFulltextPositions(
+  value: unknown,
+  expected: ReadonlySet<string>,
+): AbstractPositions {
+  const p = value as AbstractPositions | null;
+  const rowsValid = (rows: unknown, dimensions: number) =>
+    Array.isArray(rows) &&
+    rows.length === expected.size &&
+    rows.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === dimensions &&
+        row.every((v) => typeof v === 'number' && Number.isFinite(v)),
+    );
+  if (
+    !p ||
+    p.version !== 1 ||
+    !Array.isArray(p.ids) ||
+    p.ids.length !== expected.size ||
+    new Set(p.ids).size !== expected.size ||
+    p.ids.some((id) => !expected.has(id)) ||
+    !rowsValid(p.coordinates2d, 2) ||
+    !rowsValid(p.coordinates3d, 3) ||
+    typeof p.embedding !== 'string' ||
+    !p.parameters ||
+    typeof p.parameters !== 'object'
+  )
+    throw new Error('Full-text positions do not match the released papers.');
+  return p;
 }

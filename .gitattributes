@@ -1,0 +1,4 @@
+# Released JSON is byte-hashed; preserve exact bytes on Windows and Linux.
+public/data/*.json -text whitespace=cr-at-eol
+lib/*-release.json -text whitespace=cr-at-eol
+lib/text-availability.json -text whitespace=cr-at-eol
