@@ -22,6 +22,8 @@ import {
   facetGroup,
   groupFingerprint,
   topicGroup,
+  updateHighlight,
+  highlightedValues,
 } from '../lib/paper-selection.ts';
 import { decodeHtmlEntities } from '../lib/display-text.ts';
 import type { MapData } from '../lib/atlas-types.ts';
@@ -375,6 +377,77 @@ assert.deepEqual(
     .sort(),
 );
 assert.equal(groupFingerprint(new Set([...group.ids].reverse())), hash);
+const firstKeyword = facetGroup(data.points, 'keywords', [keys[0]]);
+const secondKeyword = facetGroup(data.points, 'keywords', [keys[1]]);
+const combined = updateHighlight(firstKeyword, secondKeyword)!;
+assert.deepEqual(
+  combined.ids,
+  new Set([...firstKeyword.ids, ...secondKeyword.ids]),
+);
+assert.deepEqual(
+  highlightedValues(combined, 'keywords'),
+  new Set(keys.slice(0, 2)),
+);
+assert.deepEqual(
+  updateHighlight(combined, firstKeyword)!.ids,
+  secondKeyword.ids,
+);
+assert.equal(updateHighlight(firstKeyword, firstKeyword), null);
+assert.deepEqual(
+  updateHighlight(combined, firstKeyword, 'add')!.ids,
+  combined.ids,
+);
+const bulk = updateHighlight(null, keywords, 'add')!;
+assert.equal(highlightedValues(bulk, 'keywords').size, 10);
+assert.deepEqual(
+  updateHighlight(bulk, firstKeyword)!.ids,
+  facetGroup(data.points, 'keywords', keys.slice(1)).ids,
+);
+const crossLens = updateHighlight(combined, group)!;
+assert.deepEqual(crossLens.ids, new Set([...combined.ids, ...group.ids]));
+assert.deepEqual(updateHighlight(crossLens, group)!.ids, combined.ids);
+// A later filtered view must not truncate an earlier contribution's frozen IDs.
+const filteredFirst = facetGroup(data.points.slice(0, 25), 'keywords', [
+  keys[0],
+]);
+assert.deepEqual(
+  updateHighlight(combined, filteredFirst, 'add')!.ids,
+  combined.ids,
+);
+assert.deepEqual(
+  updateHighlight(combined, filteredFirst)!.ids,
+  secondKeyword.ids,
+);
+const anotherTopic = data.topics.bertopic[1];
+const twoTopics = updateHighlight(
+  group,
+  topicGroup(data.points, 'bertopic', anotherTopic.id, anotherTopic.label),
+)!;
+assert.equal(highlightedValues(twoTopics, 'bertopic').size, 2);
+assert.deepEqual(
+  twoTopics.ids,
+  new Set(
+    data.points
+      .filter((p) => p.bertopic === topic.id || p.bertopic === anotherTopic.id)
+      .map((p) => p.id),
+  ),
+);
+const matchingTopic = topicGroup(data.points, 'bertopic', 0, 'BERTopic topic');
+const otherModel = topicGroup(data.points, 'lda', 0, 'LDA topic');
+assert.equal(
+  updateHighlight(matchingTopic, otherModel)!.parts!.length,
+  2,
+  'Topic IDs are scoped by lens',
+);
+const spatial = {
+  ids: new Set(['spatial-id']),
+  label: 'Spatial selection',
+  sourceLens: 'box' as const,
+};
+assert.deepEqual(
+  updateHighlight(updateHighlight(spatial, group), group)!.ids,
+  spatial.ids,
+);
 assert.equal(decodeHtmlEntities('A &amp; B &#x1F600;'), 'A & B 😀');
 assert.equal(decodeHtmlEntities('&#999999999999; &#xD800;'), '� �');
 console.log(

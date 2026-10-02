@@ -35,7 +35,13 @@ import type {
   TopicSummary,
 } from '@/lib/atlas-types';
 import { decodeHtmlEntities } from '@/lib/display-text';
-import { facetGroup, topicGroup, type PaperGroup } from '@/lib/paper-selection';
+import {
+  facetGroup,
+  topicGroup,
+  highlightedValues,
+  updateHighlight,
+  type PaperGroup,
+} from '@/lib/paper-selection';
 import {
   abstractMap,
   subsetMap,
@@ -120,7 +126,7 @@ function FacetControls({
   onToggle,
   onReset,
   onSelectGroup,
-  highlightedValue,
+  highlighted,
 }: {
   lens: 'publisher' | 'journal' | 'keywords';
   values: FacetValue[];
@@ -129,8 +135,8 @@ function FacetControls({
   maximum: number;
   onToggle: (value: string) => void;
   onReset: () => void;
-  onSelectGroup: (values: string[]) => void;
-  highlightedValue: string | null;
+  onSelectGroup: (values: string[], mode: 'add' | 'toggle') => void;
+  highlighted: ReadonlySet<string | number>;
 }) {
   const [query, setQuery] = useState('');
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -150,7 +156,7 @@ function FacetControls({
     <section className="shrink-0 px-4 py-3" aria-label={`Colour ${noun}`}>
       <h2 className="data-kicker">Colour {noun}</h2>
       <p className="mt-2 text-xs leading-4 text-muted-foreground">
-        Tick to colour. Highlight to compare across lenses.
+        Tick to colour. Highlight one or more to compare across lenses.
       </p>
       <div className="mt-2 flex items-center justify-between">
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -171,7 +177,7 @@ function FacetControls({
           />
           <span>
             {lens === 'keywords'
-              ? 'None of the checked keywords'
+              ? 'None of the ticked keywords'
               : `Other ${noun}`}
           </span>
         </div>
@@ -186,9 +192,9 @@ function FacetControls({
           !selected.length ||
           !values.some((item) => item.count > 0 && selectedSet.has(item.value))
         }
-        onClick={() => onSelectGroup(selected)}
+        onClick={() => onSelectGroup(selected, 'add')}
       >
-        Highlight checked {noun}
+        Highlight ticked {noun}
       </button>
       <div className="relative mt-2">
         <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted-foreground" />
@@ -203,7 +209,7 @@ function FacetControls({
       <div className="mt-2 space-y-px pb-3">
         {selected.length >= maximum ? (
           <output className="block py-2 text-xs text-muted-foreground">
-            Uncheck one to add another colour.
+            Untick one to add another colour.
           </output>
         ) : null}
         {!visible.length ? (
@@ -214,7 +220,7 @@ function FacetControls({
         {visible.map((item) => {
           const checked = selectedSet.has(item.value);
           const slot = slots.get(item.value) ?? 0;
-          const highlighted = highlightedValue === item.value;
+          const isHighlighted = highlighted.has(item.value);
           return (
             <div
               key={item.value}
@@ -248,12 +254,12 @@ function FacetControls({
               </label>
               <button
                 className="min-h-8 rounded-none px-1 text-sm text-primary underline underline-offset-2 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary disabled:text-muted-foreground disabled:no-underline aria-pressed:bg-primary/10"
-                aria-label={`Highlight ${item.value} papers`}
-                aria-pressed={highlighted}
-                disabled={item.count === 0}
-                onClick={() => onSelectGroup(highlighted ? [] : [item.value])}
+                aria-label={`${isHighlighted ? 'Remove highlight from' : 'Highlight'} ${item.value} papers`}
+                aria-pressed={isHighlighted}
+                disabled={item.count === 0 && !isHighlighted}
+                onClick={() => onSelectGroup([item.value], 'toggle')}
               >
-                {highlighted ? 'Clear' : 'Highlight'}
+                {isHighlighted ? 'Remove' : 'Highlight'}
               </button>
             </div>
           );
@@ -331,7 +337,6 @@ function LensControls({
   positionError,
   onRetryPositions,
   lens,
-  topicFilter,
   highlightedGroup,
   selections,
   colourSlots,
@@ -352,7 +357,6 @@ function LensControls({
   positionError: string;
   onRetryPositions: () => void;
   lens: PaperLens;
-  topicFilter: number | null;
   highlightedGroup: PaperGroup | null;
   selections: FacetSelections;
   colourSlots: ColourSlots;
@@ -366,9 +370,11 @@ function LensControls({
   onFacetGroup: (
     lens: 'publisher' | 'journal' | 'keywords',
     values: string[],
+    mode: 'add' | 'toggle',
   ) => void;
 }) {
   const lensControlId = useId();
+  const highlighted = highlightedValues(highlightedGroup, lens);
   const topics = [...activeTopics(data, lens)].sort(
     (a, b) => b.count - a.count,
   );
@@ -463,23 +469,25 @@ function LensControls({
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="data-kicker">Topics</p>
-            {topicFilter !== null ? (
+            {highlightedGroup !== null ? (
               <button
                 className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                 onClick={() => onTopic(null)}
               >
-                Show all
+                Clear highlights
               </button>
             ) : null}
           </div>
+          <p className="mt-2 text-xs leading-4 text-muted-foreground">
+            Select one or more topics. Select again to remove.
+          </p>
           <div className="mt-2 space-y-px pb-3">
             {topics.map((topic) => (
               <button
                 key={topic.id}
-                className={`grid w-full grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-1.5 text-left text-sm ${topicFilter === topic.id ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
-                onClick={() =>
-                  onTopic(topicFilter === topic.id ? null : topic.id)
-                }
+                className={`grid w-full grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-1.5 text-left text-sm ${highlighted.has(topic.id) ? 'bg-primary/10 text-foreground ring-1 ring-inset ring-primary/40' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
+                aria-pressed={highlighted.has(topic.id)}
+                onClick={() => onTopic(topic.id)}
               >
                 <span
                   className="size-2"
@@ -500,19 +508,16 @@ function LensControls({
         <FacetControls
           key={facetLens}
           lens={facetLens}
-          highlightedValue={
-            highlightedGroup?.sourceLens === facetLens &&
-            typeof highlightedGroup.value === 'string'
-              ? highlightedGroup.value
-              : null
-          }
+          highlighted={highlighted}
           values={facetFor(data, facetLens)}
           selected={selections[facetLens]}
           slots={colourSlots[facetLens]}
           maximum={data.facets.maximum_selection}
           onToggle={(value) => onToggleFacet(facetLens, value)}
           onReset={() => onResetFacet(facetLens)}
-          onSelectGroup={(values) => onFacetGroup(facetLens, values)}
+          onSelectGroup={(values, mode) =>
+            onFacetGroup(facetLens, values, mode)
+          }
         />
       ) : null}
       {lens === 'agreement' ? (
@@ -735,10 +740,6 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<PaperGroup | null>(null);
-  const topicFilter =
-    group?.sourceLens === lens && typeof group.value === 'number'
-      ? group.value
-      : null;
   const [facets, setFacets] = useState<{
     selections: FacetSelections;
     colourSlots: ColourSlots;
@@ -859,15 +860,19 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
     }
   };
   const selectTopic = (topic: number | null) => {
-    setGroup(
+    setSelectedId(null);
+    setGroup((current) =>
       topic === null
         ? null
-        : topicGroup(
-            data.points,
-            lens,
-            topic,
-            activeTopics(data, lens).find((item) => item.id === topic)?.label ??
-              `Topic ${topic}`,
+        : updateHighlight(
+            current,
+            topicGroup(
+              data.points,
+              lens,
+              topic,
+              activeTopics(data, lens).find((item) => item.id === topic)
+                ?.label ?? `Topic ${topic}`,
+            ),
           ),
     );
   };
@@ -900,7 +905,6 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
         setPositions(failedPositions);
       }}
       lens={lens}
-      topicFilter={topicFilter}
       highlightedGroup={group}
       selections={selections}
       colourSlots={colourSlots}
@@ -908,9 +912,15 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       onTopic={selectTopic}
       onToggleFacet={toggleFacet}
       onResetFacet={resetFacet}
-      onFacetGroup={(facet, values) => {
+      onFacetGroup={(facet, values, mode) => {
         setSelectedId(null);
-        setGroup(values.length ? facetGroup(data.points, facet, values) : null);
+        setGroup((current) =>
+          updateHighlight(
+            current,
+            facetGroup(data.points, facet, values),
+            mode,
+          ),
+        );
       }}
     />
   );
