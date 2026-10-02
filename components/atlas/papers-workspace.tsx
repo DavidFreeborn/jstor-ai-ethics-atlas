@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 import { PaperMap } from '@/components/atlas/paper-map';
@@ -112,6 +112,7 @@ function facetFor(data: MapData, lens: PaperLens): FacetValue[] {
 }
 
 function FacetControls({
+  lens,
   values,
   selected,
   slots,
@@ -119,7 +120,9 @@ function FacetControls({
   onToggle,
   onReset,
   onSelectGroup,
+  highlightedValue,
 }: {
+  lens: 'publisher' | 'journal' | 'keywords';
   values: FacetValue[];
   selected: string[];
   slots: Map<string, number>;
@@ -127,95 +130,136 @@ function FacetControls({
   onToggle: (value: string) => void;
   onReset: () => void;
   onSelectGroup: (values: string[]) => void;
+  highlightedValue: string | null;
 }) {
   const [query, setQuery] = useState('');
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const visible = useMemo(() => {
     const needle = normaliseText(query);
-    return values
-      .filter((item) => !needle || normaliseText(item.value).includes(needle))
-      .sort(
-        (a, b) =>
-          Number(selectedSet.has(b.value)) - Number(selectedSet.has(a.value)) ||
-          b.count - a.count,
-      )
-      .slice(0, 120);
-  }, [query, selectedSet, values]);
+    return values.filter(
+      (item) => !needle || normaliseText(item.value).includes(needle),
+    );
+  }, [query, values]);
+  const noun =
+    lens === 'keywords'
+      ? 'keywords'
+      : lens === 'publisher'
+        ? 'publishers'
+        : 'journals';
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
-      <div className="flex items-center justify-between">
+    <section className="shrink-0 px-4 py-3" aria-label={`Colour ${noun}`}>
+      <h2 className="data-kicker">Colour {noun}</h2>
+      <p className="mt-2 text-xs leading-4 text-muted-foreground">
+        Tick to colour. Highlight to compare across lenses.
+      </p>
+      <div className="mt-2 flex items-center justify-between">
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {selected.length} / {maximum}
+          {selected.length} / {maximum} coloured
         </span>
         <button
           className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
           onClick={onReset}
         >
-          Top 10
+          Reset to top 10
         </button>
       </div>
-      <div className="mt-2 flex items-center gap-2 border-y border-border py-1.5 text-xs text-muted-foreground">
-        <span className="size-2" style={{ backgroundColor: OTHER_COLOUR }} />
-        <span>Other values</span>
+      <div className="mt-2 space-y-1 border-y border-border py-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span
+            className="size-2 shrink-0"
+            style={{ backgroundColor: OTHER_COLOUR }}
+          />
+          <span>
+            {lens === 'keywords'
+              ? 'None of the checked keywords'
+              : `Other ${noun}`}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="size-2 shrink-0 rounded-full bg-[#242d35]" />
+          <span>No {lens === 'keywords' ? 'keyword' : lens} data</span>
+        </div>
       </div>
       <button
-        className="mt-2 text-left text-xs text-primary underline underline-offset-2"
+        className="mt-2 min-h-8 text-left text-sm text-primary underline underline-offset-2 disabled:cursor-not-allowed disabled:text-muted-foreground"
+        disabled={
+          !selected.length ||
+          !values.some((item) => item.count > 0 && selectedSet.has(item.value))
+        }
         onClick={() => onSelectGroup(selected)}
       >
-        Select papers in coloured values
+        Highlight checked {noun}
       </button>
       <div className="relative mt-2">
         <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted-foreground" />
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search lens values"
-          placeholder="Search"
-          className="h-8 rounded-none pl-7 text-xs"
+          aria-label={`Search ${noun}`}
+          placeholder={`Search all ${noun}`}
+          className="h-8 rounded-none pl-7 text-sm"
         />
       </div>
-      <ScrollArea className="mt-2 min-h-0 flex-1 pr-2">
-        <div className="space-y-px pb-3">
-          {visible.map((item) => {
-            const checked = selectedSet.has(item.value);
-            const slot = slots.get(item.value) ?? 0;
-            return (
-              <div
-                key={item.value}
-                className={`grid grid-cols-[16px_8px_minmax(0,1fr)] items-center gap-2 px-1 py-1.5 text-sm ${checked ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
+      <div className="mt-2 space-y-px pb-3">
+        {selected.length >= maximum ? (
+          <p role="status" className="py-2 text-xs text-muted-foreground">
+            Uncheck one to add another colour.
+          </p>
+        ) : null}
+        {!visible.length ? (
+          <p role="status" className="py-2 text-sm text-muted-foreground">
+            No matching {noun}.
+          </p>
+        ) : null}
+        {visible.map((item) => {
+          const checked = selectedSet.has(item.value);
+          const slot = slots.get(item.value) ?? 0;
+          const highlighted = highlightedValue === item.value;
+          return (
+            <div
+              key={item.value}
+              className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1 py-1 text-sm ${checked ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
+            >
+              <label
+                aria-label={`Colour ${item.value}`}
+                className="grid min-w-0 cursor-pointer grid-cols-[16px_8px_minmax(0,1fr)] items-start gap-2 py-1.5"
               >
                 <Checkbox
+                  className="mt-0.5 after:inset-0"
                   checked={checked}
                   disabled={!checked && selected.length >= maximum}
                   onCheckedChange={() => onToggle(item.value)}
                   aria-label={`Colour ${item.value}`}
                 />
                 <span
-                  className="size-2"
+                  className="mt-1.5 size-2"
                   style={{
                     backgroundColor: checked
                       ? CATEGORY_COLOURS[slot]
                       : OTHER_COLOUR,
                   }}
                 />
-                <button
-                  className="flex min-w-0 items-center gap-2 text-left hover:text-primary"
-                  aria-label={`Select ${item.value} papers`}
-                  onClick={() => onSelectGroup([item.value])}
-                >
-                  <span className="min-w-0 flex-1 truncate" title={item.value}>
-                    {item.value}
+                <span className="min-w-0 leading-5 [overflow-wrap:anywhere]">
+                  {item.value}
+                  <span className="ml-2 inline-block whitespace-nowrap font-mono text-xs tabular-nums opacity-70">
+                    {item.count.toLocaleString()}
                   </span>
-                  <span className="font-mono text-xs tabular-nums opacity-70">
-                    {item.count}
-                  </span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
-    </div>
+                </span>
+              </label>
+              <button
+                className="min-h-8 rounded-none px-1 text-sm text-primary underline underline-offset-2 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary disabled:text-muted-foreground disabled:no-underline aria-pressed:bg-primary/10"
+                aria-label={`Highlight ${item.value} papers`}
+                aria-pressed={highlighted}
+                disabled={item.count === 0}
+                onClick={() => onSelectGroup(highlighted ? [] : [item.value])}
+              >
+                {highlighted ? 'Clear' : 'Highlight'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -237,7 +281,7 @@ function TextFilterControl({
           <Button
             variant="outline"
             aria-label={`Text availability: ${label}`}
-            className={`mt-2 h-8 w-full justify-start gap-2 rounded-none px-2 text-sm shadow-none ${value !== 'all' ? 'border-primary text-primary' : ''}`}
+            className={`h-9 w-full justify-start gap-2 rounded-none px-2 text-sm shadow-none ${value !== 'all' ? 'border-primary text-primary' : ''}`}
           />
         }
       >
@@ -288,6 +332,7 @@ function LensControls({
   onRetryPositions,
   lens,
   topicFilter,
+  highlightedGroup,
   selections,
   colourSlots,
   onLens,
@@ -308,6 +353,7 @@ function LensControls({
   onRetryPositions: () => void;
   lens: PaperLens;
   topicFilter: number | null;
+  highlightedGroup: PaperGroup | null;
   selections: FacetSelections;
   colourSlots: ColourSlots;
   onLens: (lens: PaperLens) => void;
@@ -322,6 +368,7 @@ function LensControls({
     values: string[],
   ) => void;
 }) {
+  const lensControlId = useId();
   const topics = [...activeTopics(data, lens)].sort(
     (a, b) => b.count - a.count,
   );
@@ -330,7 +377,11 @@ function LensControls({
       ? lens
       : null;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <section
+      aria-label="Atlas controls"
+      tabIndex={0}
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+    >
       <div className="shrink-0 border-b border-border px-4 py-3">
         <label className="grid gap-2">
           <span className="data-kicker">Positions</span>
@@ -360,11 +411,14 @@ function LensControls({
             </option>
           </select>
         </label>
-        <TextFilterControl
-          value={textFilter}
-          counts={textCounts}
-          onChange={onTextFilter}
-        />
+        <div className="mt-4 grid gap-2">
+          <h2 className="data-kicker">Filters</h2>
+          <TextFilterControl
+            value={textFilter}
+            counts={textCounts}
+            onChange={onTextFilter}
+          />
+        </div>
         {positionError ? (
           <p role="alert" className="mt-2 text-sm text-destructive">
             {positionError}{' '}
@@ -375,24 +429,37 @@ function LensControls({
         ) : null}
       </div>
       <div className="border-b border-border px-4 py-3">
-        <p className="data-kicker">Lens</p>
-        <div className="mt-2 space-y-0.5">
-          {LENSES.map((item) => (
-            <button
-              key={item.id}
-              className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 border-l-2 px-2 py-1.5 text-left text-sm font-medium leading-4 transition-colors ${lens === item.id ? 'border-primary bg-background text-foreground' : 'border-transparent text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
-              onClick={() => onLens(item.id)}
-            >
-              <span>{item.label}</span>
-              <span className="font-mono text-xs tabular-nums opacity-65">
-                {coverage(data, item.id).toLocaleString()}
-              </span>
-            </button>
-          ))}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <label htmlFor={lensControlId} className="data-kicker">
+            Lens
+          </label>
+          <output
+            aria-label="Papers with lens data"
+            className="font-mono text-xs text-muted-foreground"
+          >
+            {coverage(data, lens).toLocaleString()} papers
+          </output>
         </div>
+        <select
+          id={lensControlId}
+          aria-label="Lens"
+          value={lens}
+          onChange={(event) => onLens(event.target.value as PaperLens)}
+          className="h-9 w-full min-w-0 rounded-none border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {LENSES.map((item) => (
+            <option
+              key={item.id}
+              value={item.id}
+              data-papers={coverage(data, item.id)}
+            >
+              {item.label}
+            </option>
+          ))}
+        </select>
       </div>
       {lens === 'bertopic' || lens === 'bertopic_reduced' || lens === 'lda' ? (
-        <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
+        <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="data-kicker">Topics</p>
             {topicFilter !== null ? (
@@ -404,35 +471,40 @@ function LensControls({
               </button>
             ) : null}
           </div>
-          <ScrollArea className="mt-2 min-h-0 flex-1 pr-2">
-            <div className="space-y-px pb-3">
-              {topics.map((topic) => (
-                <button
-                  key={topic.id}
-                  className={`grid w-full grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-1.5 text-left text-sm ${topicFilter === topic.id ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
-                  onClick={() =>
-                    onTopic(topicFilter === topic.id ? null : topic.id)
-                  }
-                >
-                  <span
-                    className="size-2"
-                    style={{ backgroundColor: topic.colour }}
-                  />
-                  <span className="truncate" title={topic.label}>
-                    {topic.label}
-                  </span>
-                  <span className="font-mono text-xs tabular-nums opacity-70">
-                    {topic.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
+          <div className="mt-2 space-y-px pb-3">
+            {topics.map((topic) => (
+              <button
+                key={topic.id}
+                className={`grid w-full grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-2 px-1 py-1.5 text-left text-sm ${topicFilter === topic.id ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
+                onClick={() =>
+                  onTopic(topicFilter === topic.id ? null : topic.id)
+                }
+              >
+                <span
+                  className="size-2"
+                  style={{ backgroundColor: topic.colour }}
+                />
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  {topic.label}
+                </span>
+                <span className="font-mono text-xs tabular-nums opacity-70">
+                  {topic.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
       {facetLens ? (
         <FacetControls
           key={facetLens}
+          lens={facetLens}
+          highlightedValue={
+            highlightedGroup?.sourceLens === facetLens &&
+            typeof highlightedGroup.value === 'string'
+              ? highlightedGroup.value
+              : null
+          }
           values={facetFor(data, facetLens)}
           selected={selections[facetLens]}
           slots={colourSlots[facetLens]}
@@ -464,7 +536,7 @@ function LensControls({
           </div>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -828,15 +900,17 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       }}
       lens={lens}
       topicFilter={topicFilter}
+      highlightedGroup={group}
       selections={selections}
       colourSlots={colourSlots}
       onLens={setLens}
       onTopic={selectTopic}
       onToggleFacet={toggleFacet}
       onResetFacet={resetFacet}
-      onFacetGroup={(facet, values) =>
-        setGroup(facetGroup(data.points, facet, values))
-      }
+      onFacetGroup={(facet, values) => {
+        setSelectedId(null);
+        setGroup(values.length ? facetGroup(data.points, facet, values) : null);
+      }}
     />
   );
   const activeTopicsList = activeTopics(data, lens);
@@ -865,8 +939,8 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
     : '';
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[296px_minmax(0,1fr)] max-lg:grid-cols-[272px_minmax(0,1fr)] max-sm:grid-cols-1">
-      <aside className="flex min-h-0 flex-col border-r border-border bg-[var(--panel-background)] max-sm:hidden">
+    <div className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)] max-lg:grid-cols-[17rem_minmax(0,1fr)] max-sm:grid-cols-1">
+      <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-[var(--panel-background)] max-sm:hidden">
         {controls}
       </aside>
       <section
@@ -964,8 +1038,11 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
               <SlidersHorizontal />
               Lens
             </SheetTrigger>
-            <SheetContent side="left" className="w-[300px]">
-              <SheetHeader>
+            <SheetContent
+              side="left"
+              className="w-[min(22.5rem,calc(100vw-24px))]! max-w-none! gap-0 overflow-hidden"
+            >
+              <SheetHeader className="shrink-0">
                 <SheetTitle>Lens</SheetTitle>
                 <SheetDescription className="sr-only">
                   Select an analytical lens.

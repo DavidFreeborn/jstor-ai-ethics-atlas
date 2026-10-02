@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { auditSidebar } from './audit_sidebar.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { chromium, firefox } from 'playwright';
@@ -147,11 +148,15 @@ try {
   };
   await switchPositions('abstracts');
   assert.equal((await stats()).papers, 2057);
-  assert.match(
-    await page.getByRole('button', { name: /^LDA — 37 topics/ }).innerText(),
-    /2,051/,
+  assert.equal(
+    await page
+      .getByRole('option', { name: 'LDA — 37 topics', exact: true })
+      .getAttribute('data-papers'),
+    '2051',
   );
-  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'BERTopic — 26 topics' });
   const positionTopic = [...data.topics.bertopic]
     .filter((t) => t.id >= 0)
     .sort((a, b) => b.count - a.count)[0];
@@ -172,9 +177,11 @@ try {
   assert.equal((await stats()).papers, unionIds.size);
   assert.equal((await stats()).dimension, '3d');
   assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
-  assert.match(
-    await page.getByRole('button', { name: /^LDA — 37 topics/ }).innerText(),
-    /2,051/,
+  assert.equal(
+    await page
+      .getByRole('option', { name: 'LDA — 37 topics', exact: true })
+      .getAttribute('data-papers'),
+    '2051',
   );
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await tick();
@@ -213,11 +220,13 @@ try {
   assert.deepEqual((await stats()).camera, start.camera);
   assert.equal((await stats()).selectionHash, abstract2d.selectionHash);
   await page.getByRole('button', { name: 'Deselect papers' }).click();
-  await page.getByRole('button', { name: /^Keywords/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Keywords' });
   const crossCohortKeyword = data.facets.keywords[0].value;
   await page
     .getByRole('button', {
-      name: `Select ${crossCohortKeyword} papers`,
+      name: `Highlight ${crossCohortKeyword} papers`,
       exact: true,
     })
     .click();
@@ -263,7 +272,9 @@ try {
   );
   assert.equal((await stats()).pointers, 0);
   await page.getByRole('button', { name: 'Deselect papers' }).click();
-  await page.getByRole('button', { name: /^All papers/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'All papers' });
   report.checks.push(
     'All four position modes: exact counts, preserved selections and independent 2D/3D cameras across repeated switches',
   );
@@ -321,7 +332,9 @@ try {
     ['Full text only', (id) => fulltextIds.has(id) && !rawAbstractIds.has(id)],
     ['All papers', () => true],
   ];
-  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'BERTopic — 26 topics' });
   await page
     .getByRole('button')
     .filter({ hasText: positionTopic.label })
@@ -379,7 +392,9 @@ try {
     await changeTextFilter('All papers', ids.size);
   }
   await page.getByRole('button', { name: 'Deselect papers' }).click();
-  await page.getByRole('button', { name: /^Publisher/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Publisher' });
   await page.getByRole('button', { name: 'Reset view', exact: true }).click();
   await page.screenshot({ path: `${output}/fulltext-2d.png` });
   await page.getByRole('button', { name: '3D', exact: true }).click();
@@ -410,7 +425,9 @@ try {
   await changeTextFilter('All papers', 2091);
   await page.getByText('Sampled full text', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Deselect papers' }).click();
-  await page.getByRole('button', { name: /^All papers/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'All papers' });
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await switchPositions('titles');
   await page.getByRole('button', { name: 'Reset view', exact: true }).click();
@@ -572,7 +589,9 @@ try {
     await page.getByRole('button', { name: 'Deselect papers' }).isDisabled(),
   );
   report.checks.push('120 real pointer paper selections and detail renders');
-  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'BERTopic — 26 topics' });
   const topic = [...data.topics.bertopic]
     .filter((t) => t.id >= 0)
     .sort((a, b) => b.count - a.count)[0];
@@ -592,7 +611,9 @@ try {
     'Neighbourhood agreement',
     'All papers',
   ]) {
-    await page.getByRole('button', { name: new RegExp('^' + name) }).click();
+    await page
+      .getByRole('combobox', { name: 'Lens', exact: true })
+      .selectOption({ label: name });
     await tick();
     assert.equal((await stats()).selectionHash, selected.selectionHash);
   }
@@ -606,9 +627,13 @@ try {
     await page.getByRole('button', { name: 'Deselect papers' }).isDisabled(),
   );
   assert.equal(await page.getByLabel('Persistent paper selection').count(), 0);
-  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'BERTopic — 26 topics' });
   await page.getByRole('button').filter({ hasText: topic.label }).click();
-  await page.getByRole('button', { name: /^All papers/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'All papers' });
   await page.getByRole('button', { name: '3D', exact: true }).click();
   await page.waitForFunction(() =>
     document
@@ -630,9 +655,13 @@ try {
   await tick();
   assert.equal((await stats()).selectionHash, null);
   assert.deepEqual((await stats()).camera, beforeEscape.camera);
-  await page.getByRole('button', { name: /BERTopic — 26 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'BERTopic — 26 topics' });
   await page.getByRole('button').filter({ hasText: topic.label }).click();
-  await page.getByRole('button', { name: /^All papers/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'All papers' });
   report.checks.push(
     'Toolbar and Escape deselect across lenses/dimensions without moving the camera; search Escape leaves selection intact',
   );
@@ -714,7 +743,9 @@ try {
   for (const mode of ['3D', '2D']) {
     await page.getByRole('button', { name: mode, exact: true }).click();
     await page.getByRole('button', { name: 'Reset view', exact: true }).click();
-    await page.getByRole('button', { name: /^Publisher/ }).click();
+    await page
+      .getByRole('combobox', { name: 'Lens', exact: true })
+      .selectOption({ label: 'Publisher' });
     await tick();
     const samples = await canvas.evaluate(async (c) => {
       const b = c.getBoundingClientRect(),
@@ -775,18 +806,22 @@ try {
     'false',
   );
   const boxHash = (await stats()).selectionHash;
-  await page.getByRole('button', { name: /^LDA — 37 topics/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'LDA — 37 topics' });
   await tick();
   assert.equal((await stats()).selectionHash, boxHash);
   report.checks.push(
     'Box-selected group survives lens changes, including missing assignments',
   );
   await page.getByRole('button', { name: 'Clear paper selection' }).click();
-  await page.getByRole('button', { name: /^Keywords/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Keywords' });
   const keyword = data.facets.keywords[0];
   await page
     .getByRole('button', {
-      name: `Select ${keyword.value} papers`,
+      name: `Highlight ${keyword.value} papers`,
       exact: true,
     })
     .click();
@@ -799,7 +834,9 @@ try {
         .map((p) => p.id),
     ),
   );
-  await page.getByRole('button', { name: /^Publisher/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Publisher' });
   await tick();
   assert.equal((await stats()).selected, keyword.count);
   const paletteBefore = await page
@@ -818,14 +855,18 @@ try {
       ),
     paletteBefore,
   );
-  await page.getByRole('button', { name: /^Keywords/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Keywords' });
   await page
     .getByRole('button', {
-      name: `Select ${keyword.value} papers`,
+      name: `Highlight ${keyword.value} papers`,
       exact: true,
     })
     .click();
-  await page.getByRole('button', { name: /^Publisher/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Lens', exact: true })
+    .selectOption({ label: 'Publisher' });
   for (let i = 0; i < 20; i++) {
     const checkbox = page.getByRole('checkbox').nth(i % 10);
     await checkbox.click();
@@ -874,6 +915,7 @@ try {
       path: `${output}/responsive-${viewport.width}.png`,
     });
   }
+  await auditSidebar(page, data, output, report);
   await page.getByRole('button', { name: 'Methodology', exact: true }).click();
   await page.screenshot({
     path: `${output}/new-methodology.png`,
@@ -1093,10 +1135,12 @@ try {
         document.querySelector('canvas')?.dataset.positionSource ===
         'abstracts',
     );
-    await mobile.getByRole('button', { name: /^Keywords/ }).click();
+    await mobile
+      .getByRole('combobox', { name: 'Lens', exact: true })
+      .selectOption({ label: 'Keywords' });
     await mobile
       .getByRole('button', {
-        name: `Select ${keyword.value} papers`,
+        name: `Highlight ${keyword.value} papers`,
         exact: true,
       })
       .click();

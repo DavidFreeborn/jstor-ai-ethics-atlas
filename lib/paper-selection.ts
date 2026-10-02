@@ -40,7 +40,10 @@ export function facetGroup(
         )
         .map((p) => p.id),
     ),
-    label: values.length === 1 ? values[0] : `${values.length} ${lens} values`,
+    label:
+      values.length === 1
+        ? values[0]
+        : `${values.length} ${lens === 'publisher' ? 'publishers' : lens === 'journal' ? 'journals' : 'keywords'}`,
     sourceLens: lens,
     value: values.length === 1 ? values[0] : undefined,
   };
