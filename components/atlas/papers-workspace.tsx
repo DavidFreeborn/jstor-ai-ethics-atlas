@@ -202,14 +202,14 @@ function FacetControls({
       </div>
       <div className="mt-2 space-y-px pb-3">
         {selected.length >= maximum ? (
-          <p role="status" className="py-2 text-xs text-muted-foreground">
+          <output className="block py-2 text-xs text-muted-foreground">
             Uncheck one to add another colour.
-          </p>
+          </output>
         ) : null}
         {!visible.length ? (
-          <p role="status" className="py-2 text-sm text-muted-foreground">
+          <output className="block py-2 text-sm text-muted-foreground">
             No matching {noun}.
-          </p>
+          </output>
         ) : null}
         {visible.map((item) => {
           const checked = selectedSet.has(item.value);
@@ -379,6 +379,7 @@ function LensControls({
   return (
     <section
       aria-label="Atlas controls"
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- A named scroll region needs direct keyboard scrolling.
       tabIndex={0}
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
     >
