@@ -916,32 +916,19 @@ try {
     });
   }
   await auditSidebar(page, data, output, report);
-  await page.getByRole('button', { name: 'Methodology', exact: true }).click();
+  await page.getByText('Model and methodology', { exact: true }).click();
   await page.screenshot({
     path: `${output}/new-methodology.png`,
     animations: 'disabled',
   });
   await page.setViewportSize({ width: 320, height: 568 });
-  // The popup's 100 ms size transition must settle after a viewport resize.
-  await page.waitForFunction(() => {
-    const dialog = document.querySelector('[role="dialog"]');
-    if (!dialog) return false;
-    const bounds = dialog.getBoundingClientRect();
-    return bounds.top >= 15 && bounds.bottom <= innerHeight - 15;
-  });
-  const methodsDialog = page.getByRole('dialog', {
-    name: 'Methodology',
-    exact: true,
-  });
-  const methodsBounds = await methodsDialog.boundingBox();
+  const methods = page.locator('.tool-methodology');
+  const methodsBounds = await methods.boundingBox();
+  assert(methodsBounds.x >= 0 && methodsBounds.x + methodsBounds.width <= 320);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await methods.getByRole('heading', { name: 'Matrices', exact: true }).scrollIntoViewIfNeeded();
   assert(
-    methodsBounds.y >= 15 && methodsBounds.y + methodsBounds.height <= 553,
-  );
-  await methodsDialog.evaluate((dialog) =>
-    dialog.scrollTo(0, dialog.scrollHeight),
-  );
-  assert(
-    await methodsDialog
+    await methods
       .getByRole('heading', { name: 'Matrices', exact: true })
       .isVisible(),
   );
@@ -949,10 +936,10 @@ try {
     path: `${output}/mobile-methodology.png`,
     animations: 'disabled',
   });
-  await page.keyboard.press('Escape');
+  await page.getByText('Model and methodology', { exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
   report.checks.push(
-    'Methodology stays within a 320×568 viewport and its final section remains reachable',
+    'Bottom methodology fits a 320px viewport and its final section remains reachable by document scrolling',
   );
   // An invalid optional asset must leave a working 2D renderer and offer a genuine retry.
   await page.route('**/projection-3d.json', (route) =>

@@ -3,6 +3,10 @@
 @import 'shadcn/tailwind.css';
 @import './fonts.css';
 
+.atlas-methodology-footer { padding: 0 20px 24px; }
+.atlas-methodology-footer .tool-methodology { width: 100%; max-width: none; }
+.atlas-methodology-footer .tool-methodology p { color: inherit; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

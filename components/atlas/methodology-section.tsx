@@ -1,45 +1,13 @@
 'use client';
 
-import { CircleHelp } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import unionRelease from '@/lib/union-release.json';
 import fulltextRelease from '@/lib/fulltext-release.json';
 
-export function MethodologyDialog() {
+export function MethodologySection() {
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="Methodology"
-            className="rounded-none text-muted-foreground"
-          />
-        }
-      >
-        <CircleHelp />
-        <span>Model and methodology</span>
-      </DialogTrigger>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto rounded-none p-6 sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-heading text-2xl">
-            Methodology
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Definitions, cohorts and interpretive limits.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 text-[13px] leading-5">
+    <details className="tool-methodology">
+      <summary>Model and methodology</summary>
+        <div>
           <section>
             <h3 className="font-medium">Positions</h3>
             <p className="mt-1 text-muted-foreground">
@@ -88,7 +56,6 @@ export function MethodologyDialog() {
             </p>
           </section>
         </div>
-      </DialogContent>
-    </Dialog>
+    </details>
   );
 }

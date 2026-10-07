@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { CorrelationWorkspace } from '@/components/atlas/correlation-workspace';
 import { DataError } from '@/components/atlas/data-state';
-import { MethodologyDialog } from '@/components/atlas/methodology-dialog';
+import { MethodologySection } from '@/components/atlas/methodology-section';
 import { PapersWorkspace } from '@/components/atlas/papers-workspace';
 import { WorkspaceErrorBoundary } from '@/components/atlas/workspace-error-boundary';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -38,7 +38,7 @@ export function AtlasApp() {
   return (
     <TooltipProvider delay={300}>
       <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-        <header className="grid min-h-[68px] shrink-0 grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] items-center border-b border-border bg-background px-5 max-md:grid-cols-[minmax(0,1fr)_auto_auto] max-sm:min-h-[100px] max-sm:px-3">
+        <header className="grid min-h-[68px] shrink-0 grid-cols-[minmax(220px,1fr)_auto] items-center border-b border-border bg-background px-5 max-md:grid-cols-[minmax(0,1fr)_auto] max-sm:min-h-[100px] max-sm:px-3">
           <div className="flex min-w-0 items-baseline gap-3 max-sm:col-span-full max-sm:py-2">
             <h1 className="font-heading text-[24px] font-medium tracking-[-0.025em]">
               JSTOR AI Ethics Atlas
@@ -58,9 +58,6 @@ export function AtlasApp() {
               Correlation matrices
             </button>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <MethodologyDialog />
-          </div>
         </header>
         <WorkspaceErrorBoundary key={workspace}>
           {mapError ? (
@@ -76,6 +73,7 @@ export function AtlasApp() {
           )}
         </WorkspaceErrorBoundary>
       </main>
+      <div className="atlas-methodology-footer"><MethodologySection /></div>
     </TooltipProvider>
   );
 }
