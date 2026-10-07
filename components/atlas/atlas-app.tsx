@@ -38,9 +38,9 @@ export function AtlasApp() {
   return (
     <TooltipProvider delay={300}>
       <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-        <header className="grid min-h-[68px] shrink-0 grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] items-center border-b border-border bg-background px-5 max-md:grid-cols-[minmax(0,1fr)_auto_auto] max-sm:min-h-[58px] max-sm:px-3">
-          <div className="flex min-w-0 items-baseline gap-3 max-sm:hidden">
-            <h1 className="truncate font-heading text-[24px] font-medium tracking-[-0.025em]">
+        <header className="grid min-h-[68px] shrink-0 grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] items-center border-b border-border bg-background px-5 max-md:grid-cols-[minmax(0,1fr)_auto_auto] max-sm:min-h-[100px] max-sm:px-3">
+          <div className="flex min-w-0 items-baseline gap-3 max-sm:col-span-full max-sm:py-2">
+            <h1 className="font-heading text-[24px] font-medium tracking-[-0.025em]">
               JSTOR AI Ethics Atlas
             </h1>
           </div>

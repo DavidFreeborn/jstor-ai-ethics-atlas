@@ -28,7 +28,7 @@ export function MethodologyDialog() {
         }
       >
         <CircleHelp />
-        <span className="max-sm:hidden">Methodology</span>
+        <span>Model and methodology</span>
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto rounded-none p-6 sm:max-w-lg">
         <DialogHeader>
