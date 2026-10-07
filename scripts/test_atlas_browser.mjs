@@ -924,6 +924,9 @@ try {
   await page.setViewportSize({ width: 320, height: 568 });
   const methods = page.locator('.tool-methodology');
   const methodsBounds = await methods.boundingBox();
+  const workspaceBounds = await page.locator('main').boundingBox();
+  assert(methodsBounds.y >= workspaceBounds.y + workspaceBounds.height,
+    'Methodology follows the full atlas workspace');
   assert(methodsBounds.x >= 0 && methodsBounds.x + methodsBounds.width <= 320);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await methods.getByRole('heading', { name: 'Matrices', exact: true }).scrollIntoViewIfNeeded();
