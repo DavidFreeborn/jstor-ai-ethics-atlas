@@ -262,8 +262,9 @@ export async function auditSidebar(page, data, output, report) {
       await page.evaluate(
         () =>
           document.documentElement.scrollWidth <= innerWidth &&
-          document.documentElement.scrollHeight <= innerHeight + 1,
+          document.querySelector('main').getBoundingClientRect().height <= innerHeight + 1,
       ),
+      'The atlas fits the viewport; methodology remains below it in document flow',
     );
     await controls
       .getByRole('textbox', { name: 'Search keywords', exact: true })
