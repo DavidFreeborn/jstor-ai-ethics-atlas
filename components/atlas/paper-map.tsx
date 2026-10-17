@@ -246,6 +246,7 @@ export function PaperMap({
     rendererRef.current?.setDimension(dimension, coordinates);
     rendererRef.current?.setVisual(visual, callbacks);
   });
+  useEffect(()=>{const h=()=>{if(selected)rendererRef.current?.locate(selected.id);};window.addEventListener('atlas-locate-selected',h);return()=>window.removeEventListener('atlas-locate-selected',h);},[selected]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;

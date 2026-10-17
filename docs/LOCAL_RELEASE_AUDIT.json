@@ -1,0 +1,80 @@
+{
+  "status": "pass",
+  "scope": "Local production builds; no publication performed",
+  "jstorBrowser": {
+    "checks": [
+      "All four position modes: exact counts, preserved selections and independent 2D/3D cameras across repeated switches",
+      "Full-text paper provenance is explicit; paper selection survives a temporarily absent cohort",
+      "All six text filters in all four position modes: exact ID masks, fixed cameras, no reallocations, persistent selections, empty-state recovery, masked box selection/hit testing and full-text provenance",
+      "40 rapid drag/release bursts; 3,200 moves and 800 mixed-mode wheel events; no navigation buffer reallocations",
+      "120 real pointer paper selections and detail renders",
+      "Exact topic selection IDs preserved across six lenses",
+      "Toolbar and Escape deselect across lenses/dimensions without moving the camera; Escape also clears selection from an empty search field",
+      "3D orbit/pan/cancel/pinch/zoom; dimension changes preserve camera and selection",
+      "Box-selected group survives lens changes, including missing assignments",
+      "Keyword membership agrees with data; rapid facet selection toggles",
+      "Fit all contains 7,076 points; idle renderer stops",
+      "Multiple keywords and topics: exact within-lens union, individual removal, replacement on selecting another lens and clear-all",
+      "Full keyword list and search; direct selection and keyboard deselection; scroll reachability at nine screen sizes and 200% text enlargement",
+      "Dedicated Methodology page, GitHub link and 320px layout",
+      "Invalid 3D asset stays isolated; retry recovers",
+      "Invalid abstract positions retain a working title map; retry restores 2,057 aligned papers",
+      "Combined-text asset integrity failure leaves the map usable; retry restores the correct union",
+      "Corrupt full-text positions are isolated and retry recovers the exact cohort",
+      "20 workspace remounts; desktop/narrow layout; unchanged idle state",
+      "Native two-finger touch input, mobile lens panel, and tap-to-deselect at 3× pixel density"
+    ],
+    "scale": {
+      "title": {
+        "font": "\"EB Garamond\", Georgia, \"Times New Roman\", serif",
+        "size": "28px",
+        "width": 255.46875,
+        "height": 33.59375
+      },
+      "tab": {
+        "font": "system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "14px",
+        "width": 60.6875,
+        "height": 67
+      },
+      "sidebar": {
+        "font": "Geist, Arial, Helvetica, sans-serif",
+        "size": "16px",
+        "width": 296,
+        "height": 784
+      },
+      "lens": {
+        "font": "system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "14px",
+        "width": 295,
+        "height": 36
+      },
+      "canvas": {
+        "font": "Geist, Arial, Helvetica, sans-serif",
+        "size": "16px",
+        "width": 1144,
+        "height": 784
+      }
+    },
+    "drawMs": [
+      5.600000023841858,
+      20.200000017881393
+    ],
+    "errors": []
+  },
+  "twitter": [
+    "test_focus.cjs",
+    "test_lenses.cjs",
+    "test_map_repairs.cjs",
+    "test_no_posts.cjs",
+    "test_retweet_neighbours.cjs"
+  ],
+  "philpapers": "Lint, TypeScript, static and website builds, 21 unit tests, all four data validators, browser search/neighbours/camera/Escape checks passed",
+  "fixes": [
+    "JSTOR text-source lookup uses paper ID in combined positions",
+    "Empty text-filter recovery remains above the details panel",
+    "Release lint errors resolved",
+    "Legacy tests updated to current controls",
+    "Twitter release cache keys refreshed"
+  ]
+}

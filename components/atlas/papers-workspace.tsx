@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 
 import { PaperMap } from '@/components/atlas/paper-map';
 import { DataLoading } from '@/components/atlas/data-state';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
@@ -25,7 +24,6 @@ import {
 import {
   CATEGORY_COLOURS,
   normaliseText,
-  OTHER_COLOUR,
 } from '@/lib/atlas-visual';
 import type {
   FacetValue,
@@ -120,11 +118,6 @@ function facetFor(data: MapData, lens: PaperLens): FacetValue[] {
 function FacetControls({
   lens,
   values,
-  selected,
-  slots,
-  maximum,
-  onToggle,
-  onReset,
   onSelectGroup,
   highlighted,
 }: {
@@ -139,7 +132,6 @@ function FacetControls({
   highlighted: ReadonlySet<string | number>;
 }) {
   const [query, setQuery] = useState('');
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
   const visible = useMemo(() => {
     const needle = normaliseText(query);
     return values.filter(
@@ -152,121 +144,14 @@ function FacetControls({
       : lens === 'publisher'
         ? 'publishers'
         : 'journals';
-  return (
-    <section className="shrink-0 px-4 py-3" aria-label={`Colour ${noun}`}>
-      <h2 className="data-kicker">Colour {noun}</h2>
-      <p className="mt-2 text-xs leading-4 text-muted-foreground">
-        Tick to colour. Highlight one or more to compare across lenses.
-      </p>
-      <div className="mt-2 flex items-center justify-between">
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-          {selected.length} / {maximum} coloured
-        </span>
-        <button
-          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={onReset}
-        >
-          Reset to top 10
-        </button>
-      </div>
-      <div className="mt-2 space-y-1 border-y border-border py-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span
-            className="size-2 shrink-0"
-            style={{ backgroundColor: OTHER_COLOUR }}
-          />
-          <span>
-            {lens === 'keywords'
-              ? 'None of the ticked keywords'
-              : `Other ${noun}`}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="size-2 shrink-0 rounded-full bg-[#242d35]" />
-          <span>No {lens === 'keywords' ? 'keyword' : lens} data</span>
-        </div>
-      </div>
-      <button
-        className="mt-2 min-h-8 text-left text-sm text-primary underline underline-offset-2 disabled:cursor-not-allowed disabled:text-muted-foreground"
-        disabled={
-          !selected.length ||
-          !values.some((item) => item.count > 0 && selectedSet.has(item.value))
-        }
-        onClick={() => onSelectGroup(selected, 'add')}
-      >
-        Highlight ticked {noun}
-      </button>
-      <div className="relative mt-2">
-        <Search className="pointer-events-none absolute left-2 top-2 size-3.5 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label={`Search ${noun}`}
-          placeholder={`Search all ${noun}`}
-          className="h-8 rounded-none pl-7 text-sm"
-        />
-      </div>
-      <div className="mt-2 space-y-px pb-3">
-        {selected.length >= maximum ? (
-          <output className="block py-2 text-xs text-muted-foreground">
-            Untick one to add another colour.
-          </output>
-        ) : null}
-        {!visible.length ? (
-          <output className="block py-2 text-sm text-muted-foreground">
-            No matching {noun}.
-          </output>
-        ) : null}
-        {visible.map((item) => {
-          const checked = selectedSet.has(item.value);
-          const slot = slots.get(item.value) ?? 0;
-          const isHighlighted = highlighted.has(item.value);
-          return (
-            <div
-              key={item.value}
-              className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-1 py-1 text-sm ${checked ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}
-            >
-              <label
-                aria-label={`Colour ${item.value}`}
-                className="grid min-w-0 cursor-pointer grid-cols-[16px_8px_minmax(0,1fr)] items-start gap-2 py-1.5"
-              >
-                <Checkbox
-                  className="mt-0.5 after:inset-0"
-                  checked={checked}
-                  disabled={!checked && selected.length >= maximum}
-                  onCheckedChange={() => onToggle(item.value)}
-                  aria-label={`Colour ${item.value}`}
-                />
-                <span
-                  className="mt-1.5 size-2"
-                  style={{
-                    backgroundColor: checked
-                      ? CATEGORY_COLOURS[slot]
-                      : OTHER_COLOUR,
-                  }}
-                />
-                <span className="min-w-0 leading-5 [overflow-wrap:anywhere]">
-                  {item.value}
-                  <span className="ml-2 inline-block whitespace-nowrap font-mono text-xs tabular-nums opacity-70">
-                    {item.count.toLocaleString()}
-                  </span>
-                </span>
-              </label>
-              <button
-                className="min-h-8 rounded-none px-1 text-sm text-primary underline underline-offset-2 hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary disabled:text-muted-foreground disabled:no-underline aria-pressed:bg-primary/10"
-                aria-label={`${isHighlighted ? 'Remove highlight from' : 'Highlight'} ${item.value} papers`}
-                aria-pressed={isHighlighted}
-                disabled={item.count === 0 && !isHighlighted}
-                onClick={() => onSelectGroup([item.value], 'toggle')}
-              >
-                {isHighlighted ? 'Remove' : 'Highlight'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
+  return <section className="shrink-0 px-4 py-3" aria-label={noun}>
+<div className="flex items-center justify-between"><h2 className="data-kicker">{noun}</h2>{highlighted.size>0 && <button className="text-sm underline" onClick={()=>onSelectGroup([...highlighted].map(String),'toggle')}>Deselect</button>}</div>
+<p className="mt-2 text-sm text-muted-foreground">Select one or more {noun} to highlight their papers.</p>
+<Input className="mt-3" value={query} onChange={e=>setQuery(e.target.value)} aria-label={'Search '+noun} placeholder={'Search '+noun}/>
+<div className="mt-3">{visible.map(item=><button key={item.value} className="facet-choice" aria-pressed={highlighted.has(item.value)} onClick={()=>onSelectGroup([item.value],'toggle')}>
+<span className="facet-check" aria-hidden="true">{highlighted.has(item.value)?'✓':'+'}</span><span>{item.value}</span><span className="text-muted-foreground">{item.count.toLocaleString()}</span>
+</button>)}{!visible.length && <p>No matching {noun}.</p>}</div></section>;
+
 }
 
 function TextFilterControl({
@@ -474,7 +359,7 @@ function LensControls({
                 className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
                 onClick={() => onTopic(null)}
               >
-                Clear highlights
+                Deselect
               </button>
             ) : null}
           </div>
@@ -605,6 +490,8 @@ function buildRelation(
   return { all: new Set(shared.keys()), shared };
 }
 
+function editOne(a:string,b:string){if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,e=0;while(i<a.length && j<b.length){if(a[i]===b[j]){i++;j++;}else{if(++e>1)return false;if(a.length<=b.length)j++;if(a.length>=b.length)i++;}}return e+(i<a.length||j<b.length?1:0)<=1;}
+function sampleHash(s:string){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0;}
 function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   const [positions, setPositions] = useState<PositionSource>('titles');
   const [textFilter, setTextFilter] = useState<TextFilter>('all');
@@ -737,6 +624,10 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
     [data],
   );
   const [lens, setLens] = useState<PaperLens>('catalogue');
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [nearestK, setNearestK] = useState(10);
+  const [nearestActive, setNearestActive] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<PaperGroup | null>(null);
@@ -757,8 +648,8 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   }));
   const { selections, colourSlots } = facets;
   const selected = useMemo(
-    () => data.points.find((paper) => paper.id === selectedId) ?? null,
-    [data.points, selectedId],
+    () => catalogue.points.find((paper) => paper.id === selectedId) ?? null,
+    [catalogue.points, selectedId],
   );
   const inverted = useMemo(() => buildInvertedIndex(data), [data]);
   const relation = useMemo(
@@ -791,7 +682,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
             ? 1
             : fields.slice(1).some((value) => value.includes(needle))
               ? 2
-              : 9;
+              : needle.split(/\s+/).every(token => fields.join(' ').split(/\W+/).some(word => word.includes(token) || (token.length>3 && editOne(word,token)))) ? 3 : 9;
         return { paper, score };
       })
       .filter((entry) => entry.score < 9)
@@ -846,26 +737,15 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       };
     });
   const selectPaper = (paper: PaperPoint | null) => {
-    setSelectedId(paper?.id ?? null);
-    if (
-      paper &&
-      ['publisher', 'journal', 'keywords', 'coauthorship'].includes(lens)
-    ) {
-      const connected = buildRelation(paper, lens, selections, inverted);
-      setGroup({
-        ids: new Set([paper.id, ...connected.all]),
-        label: `Shared ${lens === 'coauthorship' ? 'authors' : lens}`,
-        sourceLens: lens,
-      });
-    }
+    setSelectedId(paper?.id ?? null); setRightCollapsed(false); setNearestActive(false);
   };
   const selectTopic = (topic: number | null) => {
-    setSelectedId(null);
+    setSelectedId(null); setRightCollapsed(false); setNearestActive(false);
     setGroup((current) =>
       topic === null
         ? null
         : updateHighlight(
-            current,
+            current?.sourceLens === lens ? current : null,
             topicGroup(
               data.points,
               lens,
@@ -878,8 +758,38 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
   };
   const clearSelection = () => {
     setGroup(null);
-    setSelectedId(null);
+    setSelectedId(null); setNearestActive(false);
   };
+  useEffect(() => {const h = (e: KeyboardEvent) => {if(e.key === 'Escape'){ if(query) setQuery(''); else {setGroup(null);setSelectedId(null);setNearestActive(false);} }};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[query]);
+  type NeighbourData = {representation: PositionSource; ids: string[]; rows: number[][]};
+  const neighbourCache = useRef(new Map<PositionSource, NeighbourData>());
+  const [neighbourData, setNeighbourData] = useState<NeighbourData | null>(null);
+  const [neighbourError, setNeighbourError] = useState('');
+  const [neighbourAttempt, setNeighbourAttempt] = useState(0);
+  useEffect(()=>{
+    if(!selectedId)return;
+    let active=true;
+    const controller=new AbortController();
+    const cached=neighbourCache.current.get(activePositions);
+    const request=cached?Promise.resolve(cached):fetch(new URL('data/neighbours-'+activePositions+'.json',document.baseURI),{signal:controller.signal})
+      .then(r=>{if(!r.ok)throw new Error('Could not load embedding neighbours.');return r.json() as Promise<NeighbourData>;});
+    request.then(payload=>{
+      if(payload.representation!==activePositions || payload.ids.length!==payload.rows.length)throw new Error('Neighbour data does not match these positions.');
+      neighbourCache.current.set(activePositions,payload);
+      if(active){setNeighbourData(payload);setNeighbourError('');}
+    }).catch(e=>{if(active)setNeighbourError(e.message);});
+    return()=>{active=false;controller.abort();};
+  },[activePositions,selectedId,neighbourAttempt]);
+  const currentNeighbours=neighbourData?.representation===activePositions?neighbourData:null;
+  const neighbourIndex=currentNeighbours && selected ? currentNeighbours.ids.indexOf(selected.id) : -1;
+  const nearest = useMemo(()=>{
+    if(!currentNeighbours || neighbourIndex<0)return [];
+    const papers=new Map(catalogue.points.map(p=>[p.id,p]));
+    return currentNeighbours.rows[neighbourIndex].slice(0,nearestK).map(i=>papers.get(currentNeighbours.ids[i])).filter((p):p is PaperPoint=>Boolean(p)).map(paper=>({paper}));
+  },[currentNeighbours,neighbourIndex,catalogue,nearestK]);
+  const neighbourDescription = activePositions==='titles'?'Cosine similarity of SPECTER title embeddings.':activePositions==='abstracts'?'Cosine similarity of S-SciBERT abstract embeddings.':activePositions==='fulltext'?'Cosine similarity of SPECTER full-text embeddings.':'Cosine similarity of SPECTER abstract and full-text embeddings.';
+  const displayedGroup = nearestActive && selected ? {ids:new Set([selected.id,...nearest.map(p=>p.paper.id)]),label:'Nearest papers · embedding cosine similarity',sourceLens:lens} : group;
+  const samples = useMemo(()=>group ? catalogue.points.filter(p=>group.ids.has(p.id)).sort((a,b)=>sampleHash(a.id)-sampleHash(b.id)).slice(0,10) : [],[group,catalogue]);
   const mappedSelectionCount = useMemo(
     () =>
       group ? data.points.filter((paper) => group.ids.has(paper.id)).length : 0,
@@ -913,10 +823,13 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
       onToggleFacet={toggleFacet}
       onResetFacet={resetFacet}
       onFacetGroup={(facet, values, mode) => {
-        setSelectedId(null);
+        setSelectedId(null); setRightCollapsed(false); setNearestActive(false);
+        const active = group?.sourceLens === facet ? [...highlightedValues(group, facet)].map(String) : [];
+        const next = mode === 'toggle' ? [...active.filter(v=>!values.includes(v)),...values.filter(v=>!active.includes(v))] : [...new Set([...active,...values])];
+        setFacets(current=>({...current,selections:{...current.selections,[facet]:next},colourSlots:{...current.colourSlots,[facet]:new Map(next.map((v,i)=>[v,i%CATEGORY_COLOURS.length]))}}));
         setGroup((current) =>
           updateHighlight(
-            current,
+            current?.sourceLens === facet ? current : null,
             facetGroup(data.points, facet, values),
             mode,
           ),
@@ -950,9 +863,9 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
     : '';
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)] max-lg:grid-cols-[17rem_minmax(0,1fr)] max-sm:grid-cols-1">
+    <div style={leftCollapsed ? {gridTemplateColumns:'36px minmax(0,1fr)'} : undefined} className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)] max-lg:grid-cols-[17rem_minmax(0,1fr)] max-sm:grid-cols-1">
       <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-border bg-[var(--panel-background)] max-sm:hidden">
-        {controls}
+        <button onClick={()=>setLeftCollapsed(!leftCollapsed)} aria-label={leftCollapsed ? 'Restore controls' : 'Minimise controls'}>{leftCollapsed ? '›' : '‹'}</button>{!leftCollapsed && controls}
       </aside>
       <section
         className="relative min-h-0 overflow-hidden"
@@ -975,7 +888,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
           lens={lens}
           selected={selected}
           onSelect={selectPaper}
-          group={group}
+          group={displayedGroup}
           onGroup={setGroup}
           onClearSelection={clearSelection}
           selections={selections}
@@ -993,7 +906,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
           </output>
         ) : null}
         {loadedData && data.points.length === 0 ? (
-          <output className="absolute inset-x-4 top-32 z-20 mx-auto w-fit border border-white/20 bg-[#11151a] px-4 py-3 text-sm text-white">
+          <output className="absolute inset-x-4 top-32 z-30 mx-auto w-fit border border-white/20 bg-[#11151a] px-4 py-3 text-sm text-white">
             No papers match this text filter in the current position view.
             <button
               className="ml-2 underline"
@@ -1027,7 +940,7 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
               </p>
             </div>
             <button
-              aria-label="Clear paper selection"
+              aria-label="Deselect"
               className="ml-auto shrink-0 p-1 text-white/70 hover:text-white"
               onClick={clearSelection}
             >
@@ -1063,14 +976,14 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
             </SheetContent>
           </Sheet>
         </div>
-        <div className="absolute right-3 top-3 z-20 w-[min(340px,calc(100%-88px))]">
+        <div className="review-search absolute right-3 top-3 z-20 w-[min(340px,calc(100%-88px))]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               aria-label="Search papers"
-              placeholder="Search papers"
+              placeholder="Search titles, authors, keywords…"
               className="h-9 rounded-none border-border bg-background/95 pl-8 pr-8 shadow-none"
             />
             {query ? (
@@ -1116,11 +1029,13 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
             </div>
           ) : null}
         </div>
-        {selected ? (
-          <aside className="absolute bottom-4 right-4 top-14 z-20 flex w-[min(390px,calc(100%-32px))] flex-col border border-border bg-background/98 shadow-xl">
+        {rightCollapsed && (selected || group) && <button className="absolute right-3 top-16 z-30 bg-background p-2" onClick={()=>setRightCollapsed(false)} aria-label="Restore details panel">‹</button>}
+        {group && !selected && !rightCollapsed && <aside className="paper-details absolute bottom-4 right-4 top-14 z-20 w-[min(390px,calc(100%-32px))] overflow-auto border border-border bg-background p-4 shadow-xl"><button className="float-right" onClick={clearSelection} aria-label="Close details and deselect">×</button><button onClick={()=>setRightCollapsed(true)} aria-label="Minimise details panel">›</button><h2 className="text-xl">{group.label}</h2><p>{group.ids.size.toLocaleString()} papers selected · {LENSES.find(l=>l.id===group.sourceLens)?.label ?? group.sourceLens}</p>{(group.parts ?? [group]).map((part,index)=><section className="mt-3" key={index}><h3>{part.label}</h3><p>{activeTopics(catalogue,part.sourceLens as PaperLens).find(t=>t.id===part.value)?.terms?.join(' · ')}</p></section>)}<h3 className="mt-4">Sample papers</h3><p className="text-xs">Sample from the selected papers.</p>{samples.map(p=><button className="block py-2 text-left" key={p.id} onClick={()=>selectPaper(p)}>{decodeHtmlEntities(p.title)}</button>)}</aside>}
+        {selected && !rightCollapsed ? (
+          <aside className="paper-details absolute bottom-4 right-4 top-14 z-20 flex w-[min(390px,calc(100%-32px))] flex-col border border-border bg-background/98 shadow-xl">
             <div className="flex items-start justify-between border-b border-border px-4 py-3">
               <div className="min-w-0 pr-3">
-                <p className="data-kicker">Selected paper</p>
+                <button onClick={() => setRightCollapsed(true)} aria-label="Minimise details panel">›</button><p className="data-kicker">Selected paper</p>{data.points.some(p=>p.id===selected.id) ? <button onClick={()=>window.dispatchEvent(new Event('atlas-locate-selected'))}>Locate on map</button> : <p>Outside the current positions or text filter.</p>}
                 <h2 className="mt-1.5 font-heading text-xl font-medium leading-tight">
                   {decodeHtmlEntities(selected.title)}
                 </h2>
@@ -1129,13 +1044,13 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Close paper details"
-                onClick={() => setSelectedId(null)}
+                onClick={clearSelection}
               >
                 <X />
               </Button>
             </div>
             <ScrollArea className="min-h-0 flex-1">
-              <div className="space-y-4 p-4 text-xs">
+              <div className="space-y-4 p-4 text-sm">
                 <div className="grid grid-cols-[78px_minmax(0,1fr)] gap-x-3 gap-y-2">
                   <span className="text-muted-foreground">Year</span>
                   <span>{selected.year || 'Unavailable'}</span>
@@ -1156,9 +1071,9 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                       <span>
                         {activePositions === 'fulltext'
                           ? 'Sampled full text'
-                          : unionPositions?.sources?.[selected.i] === 'abstract'
+                          : unionPositions?.sources?.[unionPositions.ids.indexOf(selected.id)] === 'abstract'
                             ? 'Abstract'
-                            : unionPositions?.sources?.[selected.i] ===
+                            : unionPositions?.sources?.[unionPositions.ids.indexOf(selected.id)] ===
                                 'fulltext'
                               ? 'Sampled full text'
                               : 'Unavailable'}
@@ -1174,6 +1089,8 @@ function LoadedPapersWorkspace({ data: catalogue }: { data: MapData }) {
                     <p className="mt-1 leading-5">{activeValue}</p>
                   </div>
                 ) : null}
+                <section><p className="data-kicker">Nearest papers</p><p>{neighbourDescription}</p>{neighbourError?<p>{neighbourError} <button onClick={()=>setNeighbourAttempt(a=>a+1)}>Retry</button></p>:!currentNeighbours?<p>Loading neighbours…</p>:neighbourIndex<0?<p>This paper has no embedding in the selected positions.</p>:null}<label>Number <input type="number" min="1" max="50" value={nearestK} onChange={e=>setNearestK(Math.max(1,Math.min(50,Number(e.target.value)||1)))} /></label><button disabled={!currentNeighbours || neighbourIndex<0} onClick={()=>setNearestActive(!nearestActive)}>{nearestActive ? 'Deselect neighbours' : 'Highlight'}</button>{nearest.map(({paper})=><button key={paper.id} className="block py-2 text-left" onClick={()=>selectPaper(paper)}>{decodeHtmlEntities(paper.title)}</button>)}</section>
+                {group && <button onClick={()=>{setSelectedId(null);setNearestActive(false);}}>Back to topics</button>}
                 <section>
                   <p className="data-kicker">Authors</p>
                   <p className="mt-1.5 leading-5">

@@ -26,66 +26,17 @@ export async function auditSidebar(page, data, output, report) {
       for (const c of id + '\n') h = Math.imul(h ^ c.charCodeAt(0), 16777619);
     return (h >>> 0).toString(16);
   };
-  // Colour controls and highlighting are separate; the complete list remains reachable.
-  await page
-    .getByRole('combobox', { name: 'Lens', exact: true })
-    .selectOption({ label: 'Keywords' });
-  const keywordControls = page.getByRole('region', {
-    name: 'Colour keywords',
-    exact: true,
-  });
-  assert.equal(
-    await keywordControls.getByRole('checkbox').count(),
-    data.facets.keywords.length,
-  );
-  await keywordControls
-    .getByText('None of the ticked keywords', { exact: true })
-    .waitFor();
-  await keywordControls.getByText('No keyword data', { exact: true }).waitFor();
-  await page.getByRole('heading', { name: 'Filters', exact: true }).waitFor();
-  const colourBox = keywordControls.getByRole('checkbox', {
-    name: `Colour ${keyword.value}`,
-    exact: true,
-  });
-  const colourLabel = colourBox.locator('..');
-  await colourLabel.click();
-  assert.equal(await colourBox.getAttribute('aria-checked'), 'false');
-  await tick();
-  assert.equal(
-    (await stats()).selectionHash,
-    null,
-    'A label click changes colour, not the highlighted group',
-  );
-  await colourBox.focus();
-  await page.keyboard.press('Space');
-  assert.equal(await colourBox.getAttribute('aria-checked'), 'true');
-  const keywordButton = (value) =>
-    keywordControls
-      .getByRole('button', {
-        name: `Highlight ${value} papers`,
-        exact: true,
-      })
-      .or(
-        keywordControls.getByRole('button', {
-          name: `Remove highlight from ${value} papers`,
-          exact: true,
-        }),
-      );
-  const highlightKeyword = keywordButton(keyword.value);
-  await highlightKeyword.click();
-  await tick();
-  assert.equal(await highlightKeyword.getAttribute('aria-pressed'), 'true');
-  assert.equal(
-    (await stats()).selectionHash,
-    hash(
-      data.points
-        .filter((p) => p.keywords.includes(keyword.value))
-        .map((p) => p.id),
-    ),
-  );
-  await highlightKeyword.click();
-  await tick();
-  assert.equal((await stats()).selectionHash, null);
+  // Selecting a keyword directly highlights its papers.
+  await page.getByRole('combobox',{name:'Lens',exact:true}).selectOption('keywords');
+  const keywordControls=page.getByRole('region',{name:'keywords',exact:true});
+  assert.equal(await keywordControls.locator('.facet-choice').count(),data.facets.keywords.length);
+  const keywordButton=value=>keywordControls.locator('.facet-choice').filter({hasText:value});
+  const highlightKeyword=keywordButton(keyword.value);
+  await highlightKeyword.click();await tick();
+  assert.equal(await highlightKeyword.getAttribute('aria-pressed'),'true');
+  assert.equal((await stats()).selectionHash,hash(data.points.filter(p=>p.keywords.includes(keyword.value)).map(p=>p.id)));
+  await highlightKeyword.focus();await page.keyboard.press('Space');await tick();
+  assert.equal((await stats()).selectionHash,null);
   const secondKeyword = data.facets.keywords[1];
   const highlightSecond = keywordButton(secondKeyword.value);
   const keywordIds = (values) =>
@@ -124,89 +75,29 @@ export async function auditSidebar(page, data, output, report) {
   const topicIds = data.points
     .filter((p) => topics.some((t) => t.id === p.bertopic))
     .map((p) => p.id);
-  const crossLensIds = new Set([
-    ...keywordIds([keyword.value, secondKeyword.value]),
-    ...topicIds,
-  ]);
-  assert.equal((await stats()).selectionHash, hash(crossLensIds));
+  assert.equal((await stats()).selectionHash, hash(topicIds));
   for (const topic of topics)
     assert.equal(await topicButton(topic).getAttribute('aria-pressed'), 'true');
   await page.screenshot({ path: `${output}/multiple-topics.png` });
   await topicButton(topics[0]).click();
   await tick();
-  assert.equal(
-    (await stats()).selectionHash,
-    hash(
-      new Set([
-        ...keywordIds([keyword.value, secondKeyword.value]),
-        ...data.points
-          .filter((p) => p.bertopic === topics[1].id)
-          .map((p) => p.id),
-      ]),
-    ),
-  );
-  await page
-    .getByRole('combobox', { name: 'Lens', exact: true })
-    .selectOption('keywords');
-  assert.equal(await highlightKeyword.getAttribute('aria-pressed'), 'true');
-  assert.equal(await highlightSecond.getAttribute('aria-pressed'), 'true');
+  assert.equal((await stats()).selectionHash,hash(data.points.filter(p=>p.bertopic===topics[1].id).map(p=>p.id)));
+  await page.getByRole('combobox',{name:'Lens',exact:true}).selectOption('keywords');
+  assert.equal(await highlightKeyword.getAttribute('aria-pressed'),'false');
+  assert.equal(await highlightSecond.getAttribute('aria-pressed'),'false');
   await page.getByRole('button', { name: 'Deselect papers' }).click();
   await tick();
   assert.equal((await stats()).selectionHash, null);
   report.checks.push(
-    'Multiple keywords and topics: additive cross-lens union, overlap-safe individual removal, active state on returning to a lens and clear-all',
+    'Multiple keywords and topics: exact within-lens union, individual removal, replacement on selecting another lens and clear-all',
   );
-  const checkedTerms = await keywordControls
-    .getByRole('checkbox', { checked: true })
-    .evaluateAll((nodes) =>
-      nodes.map((n) => n.getAttribute('aria-label').slice('Colour '.length)),
-    );
-  await keywordControls
-    .getByRole('button', { name: 'Highlight ticked keywords', exact: true })
-    .click();
-  await tick();
-  assert.equal(
-    (await stats()).selectionHash,
-    hash(
-      data.points
-        .filter((p) => p.keywords.some((k) => checkedTerms.includes(k)))
-        .map((p) => p.id),
-    ),
-  );
-  for (const value of checkedTerms)
-    assert.equal(
-      await keywordButton(value).getAttribute('aria-pressed'),
-      'true',
-    );
-  await highlightKeyword.click();
-  await tick();
-  assert.equal(
-    (await stats()).selectionHash,
-    hash(keywordIds(checkedTerms.filter((value) => value !== keyword.value))),
-  );
-  await keywordControls
-    .getByRole('button', { name: 'Highlight ticked keywords', exact: true })
-    .click();
-  await page
-    .getByRole('combobox', { name: 'Lens', exact: true })
-    .selectOption({ label: 'LDA — 37 topics' });
-  await tick();
-  assert.equal(
-    (await stats()).selected,
-    data.points.filter((p) => p.keywords.some((k) => checkedTerms.includes(k)))
-      .length,
-  );
-  await page.getByRole('button', { name: 'Deselect papers' }).click();
-  await page
-    .getByRole('combobox', { name: 'Lens', exact: true })
-    .selectOption({ label: 'Keywords' });
   const tailKeyword = data.facets.keywords.at(-1).value;
   await page
     .getByRole('textbox', { name: 'Search keywords', exact: true })
     .fill(tailKeyword);
   assert(
     await page
-      .getByRole('checkbox', { name: `Colour ${tailKeyword}`, exact: true })
+      .locator('.facet-choice').filter({hasText:tailKeyword})
       .count(),
   );
   await page
@@ -235,10 +126,7 @@ export async function auditSidebar(page, data, output, report) {
       name: 'Atlas controls',
       exact: true,
     });
-    const last = controls.getByRole('checkbox', {
-      name: `Colour ${tailKeyword}`,
-      exact: true,
-    });
+    const last = controls.locator('.facet-choice').filter({hasText:tailKeyword});
     await last.scrollIntoViewIfNeeded();
     assert(await last.isVisible());
     const bounds = await last.boundingBox();
@@ -296,10 +184,7 @@ export async function auditSidebar(page, data, output, report) {
     name: 'Atlas controls',
     exact: true,
   });
-  const enlargedLast = enlargedControls.getByRole('checkbox', {
-    name: `Colour ${tailKeyword}`,
-    exact: true,
-  });
+  const enlargedLast = enlargedControls.locator('.facet-choice').filter({hasText:tailKeyword});
   await enlargedLast.scrollIntoViewIfNeeded();
   assert((await enlargedLast.boundingBox()).y < 540);
   assert(
@@ -328,6 +213,6 @@ export async function auditSidebar(page, data, output, report) {
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   report.checks.push(
-    'Full keyword list and search; label/keyboard colour toggles; distinct highlight/remove and ticked-keyword union; scroll reachability at nine screen sizes and 200% text enlargement',
+    'Full keyword list and search; direct selection and keyboard deselection; scroll reachability at nine screen sizes and 200% text enlargement',
   );
 }

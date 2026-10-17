@@ -1,3 +1,4 @@
+function dimColour(hex:string){if(!/^#[0-9a-f]{6}$/i.test(hex))return '#252e36';return '#'+[0,1,2].map((v)=>Math.round([17,21,26][v]*0.90+parseInt(hex.slice(1+v*2,3+v*2),16)*0.10).toString(16).padStart(2,'0')).join('');}
 import type { MapData, PaperPoint } from './atlas-types';
 import {
   backingSize,
@@ -204,6 +205,12 @@ export class PaperRenderer {
       );
     this.changed();
   }
+  locate(id: string) {
+    const index=this.data.points.findIndex(p=>p.id===id);if(index<0)return;const p=this.data.points[index];
+    if(this.dimension==='3d' && this.camera3 && this.coordinates3)this.camera3={...this.camera3,target:this.coordinates3[index],distance:Math.min(this.camera3.distance,1.2)};
+    else this.camera2={...this.camera2,x:p.x,y:p.y};
+    this.changed();
+  }
   reset(fitAll = false) {
     this.cancel();
     if (this.dimension === '3d' && this.coordinates3)
@@ -356,13 +363,13 @@ export class PaperRenderer {
           circle(
             p,
             Math.max(1.2, radiusFor(p) * 0.63),
-            this.visual.marks[p.index]?.missing ? '#242d35' : '#52606b',
+            this.visual.marks[p.index]?.missing ? '#242d35' : dimColour(this.visual.marks[p.index]?.colours[0] ?? '#52606b'),
           );
     for (const p of this.drawOrder) {
       const paper = this.data.points[p.index];
       if (group && !group.ids.has(paper.id)) continue;
       const mark = this.visual.marks[p.index],
-        radius = radiusFor(p);
+        radius = radiusFor(p) * (group ? 1.5 : 1);
       if (!mark || mark.missing) {
         circle(
           p,
@@ -402,11 +409,12 @@ export class PaperRenderer {
         )
       : null;
     if (selected) {
-      ctx.beginPath();
-      ctx.arc(selected.x, selected.y, radiusFor(selected) + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.7;
-      ctx.stroke();
+      const colours=this.visual.marks[selected.index]?.colours ?? ['#ddf6ff'];
+      const fills=colours.length?colours:['#ddf6ff'];
+      fills.forEach((colour,i)=>{ctx.beginPath();ctx.moveTo(selected.x,selected.y);ctx.arc(selected.x,selected.y,8,-Math.PI/2+i*2*Math.PI/fills.length,-Math.PI/2+(i+1)*2*Math.PI/fills.length);ctx.closePath();ctx.fillStyle=colour;ctx.fill();});
+      for (const [radius,colour,width] of [[9.5,'#091117',3],[9.5,'#fff',1],[7.5,'#091117',2],[7.5,'#fff',1.5]] as const) {
+        ctx.beginPath();ctx.arc(selected.x,selected.y,radius,0,Math.PI*2);ctx.strokeStyle=colour;ctx.lineWidth=width;ctx.stroke();
+      }
     }
     if (this.boxRect) {
       const { start, end } = this.boxRect;

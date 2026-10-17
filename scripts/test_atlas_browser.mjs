@@ -225,10 +225,7 @@ try {
     .selectOption({ label: 'Keywords' });
   const crossCohortKeyword = data.facets.keywords[0].value;
   await page
-    .getByRole('button', {
-      name: `Highlight ${crossCohortKeyword} papers`,
-      exact: true,
-    })
+    .locator('.facet-choice').filter({hasText: crossCohortKeyword})
     .click();
   await tick();
   const crossCohortSelection = await stats();
@@ -293,10 +290,8 @@ try {
     .click();
   await page.getByText('Sampled full text', { exact: true }).waitFor();
   await switchPositions('abstracts');
-  assert.equal(
-    await page.getByRole('button', { name: 'Close paper details' }).count(),
-    0,
-  );
+  assert.equal(await page.getByRole('button', { name: 'Close paper details' }).count(),1);
+  await page.getByText('Outside the current positions or text filter.',{exact:true}).waitFor();
   await switchPositions('union');
   await page.getByText('Sampled full text', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Deselect papers' }).click();
@@ -418,10 +413,7 @@ try {
     .click();
   await page.getByText('Sampled full text', { exact: true }).waitFor();
   await changeTextFilter('Has both (∩)', 423);
-  assert.equal(
-    await page.getByRole('button', { name: 'Close paper details' }).count(),
-    0,
-  );
+  assert.equal(await page.getByRole('button', { name: 'Close paper details' }).count(),1);
   await changeTextFilter('All papers', 2091);
   await page.getByText('Sampled full text', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Deselect papers' }).click();
@@ -649,7 +641,7 @@ try {
   await page.getByRole('textbox', { name: 'Search papers' }).focus();
   await page.keyboard.press('Escape');
   await tick();
-  assert.equal((await stats()).selectionHash, beforeEscape.selectionHash);
+  assert.equal((await stats()).selectionHash, null);
   await canvas.focus();
   await page.keyboard.press('Escape');
   await tick();
@@ -663,7 +655,7 @@ try {
     .getByRole('combobox', { name: 'Lens', exact: true })
     .selectOption({ label: 'All papers' });
   report.checks.push(
-    'Toolbar and Escape deselect across lenses/dimensions without moving the camera; search Escape leaves selection intact',
+    'Toolbar and Escape deselect across lenses/dimensions without moving the camera; Escape also clears selection from an empty search field',
   );
   for (let i = 0; i < 25; i++) {
     await canvas.evaluate((c, i) => {
@@ -736,7 +728,7 @@ try {
   await tick();
   assert.notEqual((await stats()).camera.distance, beforePinch);
   assert.equal((await stats()).pointers, 0);
-  await page.getByRole('button', { name: 'Clear paper selection' }).click();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
   await page.getByRole('button', { name: 'Reset view', exact: true }).click();
   await tick();
   // Sustained movement in the populated view, not just extreme zoom/empty frames.
@@ -814,16 +806,13 @@ try {
   report.checks.push(
     'Box-selected group survives lens changes, including missing assignments',
   );
-  await page.getByRole('button', { name: 'Clear paper selection' }).click();
+  await page.getByRole('button', { name: 'Deselect papers' }).click();
   await page
     .getByRole('combobox', { name: 'Lens', exact: true })
     .selectOption({ label: 'Keywords' });
   const keyword = data.facets.keywords[0];
   await page
-    .getByRole('button', {
-      name: `Highlight ${keyword.value} papers`,
-      exact: true,
-    })
+    .locator('.facet-choice').filter({hasText: keyword.value})
     .click();
   await tick();
   assert.equal(
@@ -839,42 +828,26 @@ try {
     .selectOption({ label: 'Publisher' });
   await tick();
   assert.equal((await stats()).selected, keyword.count);
-  const paletteBefore = await page
-    .getByRole('checkbox')
-    .evaluateAll((nodes) =>
-      nodes.map((node) => node.getAttribute('aria-checked')),
-    );
   await page.getByRole('button', { name: 'Deselect papers' }).click();
   await tick();
   assert.equal((await stats()).selectionHash, null);
-  assert.deepEqual(
-    await page
-      .getByRole('checkbox')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => node.getAttribute('aria-checked')),
-      ),
-    paletteBefore,
-  );
   await page
     .getByRole('combobox', { name: 'Lens', exact: true })
     .selectOption({ label: 'Keywords' });
   await page
-    .getByRole('button', {
-      name: `Highlight ${keyword.value} papers`,
-      exact: true,
-    })
+    .locator('.facet-choice').filter({hasText: keyword.value})
     .click();
   await page
     .getByRole('combobox', { name: 'Lens', exact: true })
     .selectOption({ label: 'Publisher' });
   for (let i = 0; i < 20; i++) {
-    const checkbox = page.getByRole('checkbox').nth(i % 10);
-    await checkbox.click();
+    const choice = page.locator('.facet-choice').nth(i % 10);
+    await choice.click();
   }
   report.checks.push(
-    'Keyword membership agrees with data; rapid atomic palette toggles',
+    'Keyword membership agrees with data; rapid facet selection toggles',
   );
-  await page.getByRole('button', { name: 'Clear paper selection' }).click();
+  assert(await page.getByRole('button', { name: 'Deselect papers' }).isDisabled());
   await page.getByRole('button', { name: 'Fit all', exact: true }).click();
   await tick();
   assert.equal((await stats()).visible, 7076);
@@ -886,7 +859,7 @@ try {
   assert.equal((await stats()).frames, idle);
   report.checks.push('Fit all contains 7,076 points; idle renderer stops');
   await page
-    .getByRole('button', { name: 'Correlation matrices', exact: true })
+    .getByRole('button', { name: 'Associations', exact: true })
     .click();
   await page
     .getByRole('button', { name: 'Minimise pairwise association' })
@@ -896,7 +869,7 @@ try {
     .getByRole('button', { name: 'Pairwise association', exact: true })
     .click();
   await page.screenshot({ path: `${output}/new-overview.png` });
-  await page.getByRole('button', { name: 'Papers', exact: true }).click();
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
   for (const viewport of [
     { width: 1024, height: 768 },
     { width: 900, height: 700 },
@@ -916,34 +889,14 @@ try {
     });
   }
   await auditSidebar(page, data, output, report);
-  await page.getByText('Model and methodology', { exact: true }).click();
-  await page.screenshot({
-    path: `${output}/new-methodology.png`,
-    animations: 'disabled',
-  });
-  await page.setViewportSize({ width: 320, height: 568 });
-  const methods = page.locator('.tool-methodology');
-  const methodsBounds = await methods.boundingBox();
-  const workspaceBounds = await page.locator('main').boundingBox();
-  assert(methodsBounds.y >= workspaceBounds.y + workspaceBounds.height,
-    'Methodology follows the full atlas workspace');
-  assert(methodsBounds.x >= 0 && methodsBounds.x + methodsBounds.width <= 320);
-  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await methods.getByRole('heading', { name: 'Matrices', exact: true }).scrollIntoViewIfNeeded();
-  assert(
-    await methods
-      .getByRole('heading', { name: 'Matrices', exact: true })
-      .isVisible(),
-  );
-  await page.screenshot({
-    path: `${output}/mobile-methodology.png`,
-    animations: 'disabled',
-  });
-  await page.getByText('Model and methodology', { exact: true }).click();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  report.checks.push(
-    'Bottom methodology fits a 320px viewport and its final section remains reachable by document scrolling',
-  );
+  await page.getByRole('button', {name:'Methodology',exact:true}).click();
+  await page.setViewportSize({width:320,height:568});
+  assert(await page.getByRole('link',{name:'Code, data and full methodology on GitHub'}).isVisible());
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.screenshot({path:output+'/mobile-methodology.png'});
+  await page.getByRole('button',{name:'Map',exact:true}).click();
+  await page.setViewportSize({width:1440,height:900});
+  report.checks.push('Dedicated Methodology page, GitHub link and 320px layout');
   // An invalid optional asset must leave a working 2D renderer and offer a genuine retry.
   await page.route('**/projection-3d.json', (route) =>
     route.fulfill({
@@ -1051,9 +1004,9 @@ try {
   }
   for (let i = 0; i < 20; i++) {
     await page
-      .getByRole('button', { name: 'Correlation matrices', exact: true })
+      .getByRole('button', { name: 'Associations', exact: true })
       .click();
-    await page.getByRole('button', { name: 'Papers', exact: true }).click();
+    await page.getByRole('button', { name: 'Map', exact: true }).click();
     await canvas.waitFor();
   }
   if (cdp) {
@@ -1128,11 +1081,8 @@ try {
     await mobile
       .getByRole('combobox', { name: 'Lens', exact: true })
       .selectOption({ label: 'Keywords' });
-    await mobile
-      .getByRole('button', {
-        name: `Highlight ${keyword.value} papers`,
-        exact: true,
-      })
+    await mobile.getByRole('dialog',{name:'Lens',exact:true})
+      .locator('.facet-choice').filter({hasText: keyword.value})
       .click();
     await mobile
       .getByRole('combobox', { name: 'Positions', exact: true })
@@ -1166,6 +1116,7 @@ try {
       .getByRole('dialog', { name: 'Lens', exact: true })
       .waitFor({ state: 'hidden' });
     assert(await mobile.locator('canvas').isVisible());
+    // The controls dialog consumes Escape; its selection remains on the map.
     await mobile.getByLabel('Persistent paper selection').waitFor();
     const mobileCamera = await mobile
       .locator('canvas')

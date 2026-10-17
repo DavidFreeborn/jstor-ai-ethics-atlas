@@ -11,9 +11,11 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import type { MapData } from '@/lib/atlas-types';
 
 export function AtlasApp() {
-  const [workspace, setWorkspace] = useState<'papers' | 'correlations'>(
+  const [workspace, setWorkspaceState] = useState<'papers' | 'correlations' | 'methodology'>(
     'papers',
   );
+  const setWorkspace = (next: 'papers' | 'correlations' | 'methodology') => {setWorkspaceState(next);window.location.hash=next==='papers'?'map':next==='correlations'?'associations':next;};
+  useEffect(()=>{const sync=()=>setWorkspaceState(window.location.hash==='#associations'?'correlations':window.location.hash==='#methodology'?'methodology':'papers');sync();window.addEventListener('hashchange',sync);return()=>window.removeEventListener('hashchange',sync);},[]);
   const [map, setMap] = useState<MapData | null>(null);
   const [mapError, setMapError] = useState('');
   useEffect(() => {
@@ -49,31 +51,20 @@ export function AtlasApp() {
               onClick={() => setWorkspace('papers')}
               className={`border-b-2 px-4 text-sm font-medium transition-colors ${workspace === 'papers' ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
-              Papers
+              Map
             </button>
             <button
               onClick={() => setWorkspace('correlations')}
               className={`border-b-2 px-4 text-sm font-medium transition-colors ${workspace === 'correlations' ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
             >
-              Correlation matrices
+              Associations
             </button>
-          </nav>
+          <button className="px-4 text-sm" onClick={() => setWorkspace('methodology')}>Methodology</button></nav>
         </header>
-        <WorkspaceErrorBoundary key={workspace}>
-          {mapError ? (
-            <DataError message={mapError} />
-          ) : map ? (
-            workspace === 'papers' ? (
-              <PapersWorkspace data={map} />
-            ) : (
-              <CorrelationWorkspace data={map} />
-            )
-          ) : (
-            <PapersWorkspace data={null} />
-          )}
-        </WorkspaceErrorBoundary>
+        <div className="min-h-0 flex-1 flex flex-col" style={{display:workspace==='papers'?'flex':'none'}}><WorkspaceErrorBoundary>{mapError?<DataError message={mapError}/>:<PapersWorkspace data={map}/>}</WorkspaceErrorBoundary></div>
+        {workspace==='correlations' && map && <WorkspaceErrorBoundary><CorrelationWorkspace data={map}/></WorkspaceErrorBoundary>}
+        {workspace==='methodology' && <article className="atlas-method-page"><h2>Methodology</h2><MethodologySection/></article>}
       </main>
-      <div className="atlas-methodology-footer"><MethodologySection /></div>
     </TooltipProvider>
   );
 }

@@ -129,9 +129,9 @@ export function CorrelationWorkspace({ data }: { data: MapData }) {
   const chooseRight = (next: AssociationLensId) => setPair(next === left ? right : left, next);
 
   return (
-    <div className={`grid min-h-0 flex-1 grid-cols-1 bg-background max-lg:overflow-auto ${overviewOpen ? 'lg:grid-cols-[500px_minmax(0,1fr)]' : 'lg:grid-cols-1'}`}>
-      {overviewOpen ? <PairwiseOverview data={data} left={left} right={right} onPair={setPair} onClose={() => setOverviewOpen(false)} /> : null}
-      <section className="flex min-h-0 min-w-0 flex-col" aria-labelledby="association-detail-title">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-background"><nav className="review-tabs"><button aria-pressed={overviewOpen} onClick={() => setOverviewOpen(true)}>Association overview</button><button aria-pressed={!overviewOpen} onClick={() => setOverviewOpen(false)}>Detailed comparison</button></nav>
+      {overviewOpen ? <PairwiseOverview data={data} left={left} right={right} onPair={(a,b) => {setPair(a,b);setOverviewOpen(false);}} onClose={() => setOverviewOpen(false)} /> : null}
+      <section style={{display: overviewOpen ? 'none' : undefined}} className="flex min-h-0 min-w-0 flex-col" aria-labelledby="association-detail-title">
         <div className="border-b border-border px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
             {!overviewOpen ? <button type="button" onClick={() => setOverviewOpen(true)} className="flex h-8 items-center gap-2 border border-input bg-background px-2.5 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" aria-expanded="false" aria-controls="pairwise-association"><PanelLeftOpen className="size-4" />Pairwise association</button> : null}

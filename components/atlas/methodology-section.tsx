@@ -5,8 +5,7 @@ import fulltextRelease from '@/lib/fulltext-release.json';
 
 export function MethodologySection() {
   return (
-    <details className="tool-methodology">
-      <summary>Model and methodology</summary>
+    <div className="methodology-content">
         <div>
           <section>
             <h3 className="font-medium">Positions</h3>
@@ -15,8 +14,7 @@ export function MethodologySection() {
               records. Full text: {fulltextRelease.count.toLocaleString()}{' '}
               SPECTER records. Abstracts ∪ full text:{' '}
               {unionRelease.count.toLocaleString()} SPECTER records, preferring
-              abstracts. Full texts use up to eight sampled passages. Each has
-              seeded 2D/3D UMAP layouts; gaps are not semantic distances.
+              abstracts. Full texts use up to eight sampled passages. Each representation has seeded 2D and 3D UMAP layouts.
             </p>
           </section>
           <section>
@@ -43,19 +41,20 @@ export function MethodologySection() {
               Text availability: 2,100 nonempty abstracts, 2,091 usable full
               texts; 423 have both (∩). Filters hide records without moving
               points. Groups retain IDs across filters, positions and lenses.
-              Counts and shared-author reach use shown papers; names are not
-              disambiguated. Hollow selected points lack lens data.
+              Counts and shared-author reach use shown papers; names follow the source records. Hollow selected points lack lens data.
             </p>
           </section>
+          <section><h3>Nearest papers</h3><p>Neighbours are ranked by cosine similarity in the original embeddings underlying the selected positions. Each representation uses its own paper cohort. Topic examples are a stable sample of the selected papers.</p></section>
           <section>
-            <h3 className="font-medium">Matrices</h3>
+            <h3 className="font-medium">Associations</h3>
             <p className="mt-1 text-muted-foreground">
               Pairwise association uses bias-corrected Cramér&apos;s V; detailed
               cells show Pearson residuals. Keyword memberships are
               multi-response and descriptive.
             </p>
           </section>
+          <p><a href="https://github.com/DavidFreeborn/jstor-ai-ethics-atlas">Code, data and full methodology on GitHub</a></p>
         </div>
-    </details>
+    </div>
   );
 }
