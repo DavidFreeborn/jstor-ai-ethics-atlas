@@ -334,6 +334,7 @@ export class PaperRenderer {
     ctx.fillStyle = '#090c10';
     ctx.fillRect(0, 0, this.size.width, this.size.height);
     const group = this.visual.group,
+      resizeGroup = Boolean(group && (group.nearest || group.sourceLens === 'box')),
       baseRadius =
         this.dimension === '2d'
           ? clamp(
@@ -362,18 +363,18 @@ export class PaperRenderer {
         if (!group.ids.has(this.data.points[p.index].id))
           circle(
             p,
-            Math.max(1.2, radiusFor(p) * 0.63),
+            resizeGroup ? Math.max(1.2, radiusFor(p) * 0.63) : this.visual.marks[p.index]?.missing ? Math.max(1.1, radiusFor(p) * 0.6) : radiusFor(p) + ((this.visual.marks[p.index]?.colours.length ?? 0) > 1 ? 0.6 : 0),
             this.visual.marks[p.index]?.missing ? '#242d35' : dimColour(this.visual.marks[p.index]?.colours[0] ?? '#52606b'),
           );
     for (const p of this.drawOrder) {
       const paper = this.data.points[p.index];
       if (group && !group.ids.has(paper.id)) continue;
       const mark = this.visual.marks[p.index],
-        radius = radiusFor(p) * (group ? 1.5 : 1);
+        radius = radiusFor(p) * (resizeGroup ? 1.5 : 1);
       if (!mark || mark.missing) {
         circle(
           p,
-          group ? radius : Math.max(1.1, radius * 0.6),
+          resizeGroup ? radius : Math.max(1.1, radius * 0.6),
           group ? '#090c10' : '#242d35',
         );
         if (group) {
@@ -482,8 +483,8 @@ export class PaperRenderer {
                 1.9,
                 4,
               );
-        if (!member) radius = Math.max(1.2, radius * 0.63);
-        else if (this.visual.marks[point.index]?.missing && !group)
+        if (!member && (group?.nearest || group?.sourceLens === 'box')) radius = Math.max(1.2, radius * 0.63);
+        else if (this.visual.marks[point.index]?.missing && !(group?.nearest || group?.sourceLens === 'box'))
           radius = Math.max(1.1, radius * 0.6);
         else if ((this.visual.marks[point.index]?.colours.length ?? 0) > 1)
           radius += 0.6;

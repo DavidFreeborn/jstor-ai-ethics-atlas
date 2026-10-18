@@ -6,6 +6,7 @@ type PaperGroupPart = {
   value?: string | number;
 };
 export type PaperGroup = PaperGroupPart & {
+  nearest?: boolean;
   parts?: readonly PaperGroupPart[];
 };
 
